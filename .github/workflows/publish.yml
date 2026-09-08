@@ -1,0 +1,102 @@
+name: Publish to PyPI
+
+# Publishes to PyPI whenever a GitHub Release is published.
+# Uses PyPI Trusted Publishing (OIDC) — no API token secrets required,
+# provided the pending publisher is configured on PyPI (see PUBLISHING.md).
+#
+# Can also be triggered manually from the Actions tab (workflow_dispatch),
+# e.g. to re-run a publish for an existing tag.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tests:
+    name: Run offline test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run tests
+        run: uv run python test.py
+
+  build:
+    name: Build sdist & wheel
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      # Refuse to publish when the release tag, pyproject.toml and
+      # package __version__ disagree (tag may carry a leading "v").
+      - name: Verify release tag matches the package version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${RELEASE_TAG#v}"
+          PYPROJECT_VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          PACKAGE_VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/b2b_firmographic_crawler/__init__.py)"
+          echo "release tag : ${TAG_VERSION}"
+          echo "pyproject   : ${PYPROJECT_VERSION}"
+          echo "__version__ : ${PACKAGE_VERSION}"
+          if [ -z "${PACKAGE_VERSION}" ] \
+            || [ "${TAG_VERSION}" != "${PYPROJECT_VERSION}" ] \
+            || [ "${TAG_VERSION}" != "${PACKAGE_VERSION}" ]; then
+            echo "::error::Version mismatch: release tag '${RELEASE_TAG}', pyproject '${PYPROJECT_VERSION}', __version__ '${PACKAGE_VERSION}'. Bump the version (or fix the tag) and re-release."
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: build
+    # The environment name must match the trusted publisher configured on PyPI.
+    environment: pypi
+    permissions:
+      # OIDC token exchange with PyPI — required for Trusted Publishing.
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Trusted Publishing (recommended): nothing else to configure here.
+        #
+        # Prefer an API token instead? Create the PYPI_API_TOKEN repository
+        # secret, then replace this step's config with:
+        #   with:
+        #     password: ${{ secrets.PYPI_API_TOKEN }}
+        # and remove the `id-token: write` permission above.

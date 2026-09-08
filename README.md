@@ -45,6 +45,7 @@ b2b-firmographic-crawler searches for companies on supported data sources (Craft
 - [Project structure](#project-structure)
 - [FAQ](#faq)
 - [Roadmap](#roadmap)
+- [Publishing](#publishing)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -583,6 +584,25 @@ only collect what you need. See
 - [ ] Search by stock symbol
 - [ ] Concurrent scraping with rate limiting and retries
 - [ ] More exporters (Excel, SQLite)
+
+## Publishing
+
+New versions are published to PyPI **automatically** whenever a GitHub Release
+is published: the
+[`publish` workflow](.github/workflows/publish.yml) runs the test suite,
+verifies the release tag matches the package version, builds the sdist/wheel
+and uploads them via PyPI **Trusted Publishing** (OIDC — no secrets stored in
+the repository).
+
+The short version of a release:
+
+1. Bump the version in `pyproject.toml` and `src/b2b_firmographic_crawler/__init__.py`
+2. Commit, push, and tag `vX.Y.Z`
+3. Create the GitHub Release — Actions publishes it to PyPI
+
+See [PUBLISHING.md](PUBLISHING.md) for one-time setup (pending trusted
+publisher + GitHub environment), token-based publishing, TestPyPI dry runs,
+manual `uv publish`, and troubleshooting.
 
 ## Contributing
 
