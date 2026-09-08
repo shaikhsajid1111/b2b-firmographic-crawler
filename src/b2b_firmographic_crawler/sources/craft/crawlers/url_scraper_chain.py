@@ -8,8 +8,11 @@ from b2b_firmographic_crawler.logger import get_logger
 logger = get_logger("URL scraper chain")
 
 
-class UrlScraperChain(UrlScraper):
-    """Try URL scrapers in order until one returns a page."""
+class CraftUrlScraperChain(UrlScraper):
+    """Try URL scrapers in order until one returns a page.
+
+    For Craft, this tries HTTP first, then falls back to Selenium.
+    """
 
     def __init__(self, scrapers: Iterable[UrlScraper]):
         self.scrapers = tuple(scrapers)

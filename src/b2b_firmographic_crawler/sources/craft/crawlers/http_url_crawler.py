@@ -13,7 +13,11 @@ from b2b_firmographic_crawler.utils.scraping_utils import ScrapingUtils
 logger = get_logger(__name__)
 
 
-class HTTPUrlScraper(UrlScraper):
+class CraftHttpUrlScraper(UrlScraper):
+    """HTTP URL scraper for Craft.co pages.
+
+    Extracts window.App.cache data from JSON assigned in script tags.
+    """
 
     def build_proxies(self, proxy: Optional[str]) -> Any:
         if not proxy:

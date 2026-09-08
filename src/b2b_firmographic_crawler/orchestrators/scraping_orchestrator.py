@@ -3,33 +3,30 @@ from typing import Optional
 
 from b2b_firmographic_crawler.base.parser import Parser
 from b2b_firmographic_crawler.base.scraper import UrlScraper
-from b2b_firmographic_crawler.crawlers.http_url_crawler import HTTPUrlScraper
-from b2b_firmographic_crawler.crawlers.selenium_base_url_crawler import (
-    SeleniumBaseUrlScraper,
-)
-from b2b_firmographic_crawler.crawlers.url_scraper_chain import UrlScraperChain
 from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig
 from b2b_firmographic_crawler.logger import get_logger
 from b2b_firmographic_crawler.models.company_data import CompanyData
 from b2b_firmographic_crawler.storage.persistent_disk_cache import DiskCache
 from b2b_firmographic_crawler.utils.general_utils import GeneralUtils
 
-logger = get_logger("Craft Scraping Orchestrator")
+logger = get_logger("Scraping Orchestrator")
 
 
-class CraftCompanyPageScrapingService:
+class CompanyPageScrapingService:
+    """Source-agnostic service for scraping and parsing company pages.
+
+    Each source provides its own UrlScraper and Parser implementations,
+    making this service fully source-agnostic.
+    """
+
     def __init__(
         self,
-        url_scraper: Optional[UrlScraper] = None,
-        page_parser: Optional[Parser] = None,
+        page_parser: Parser,
+        url_scraper: UrlScraper,
         cache_dir: Optional[str] = None,
     ):
-        self.url_scraper = url_scraper or UrlScraperChain(
-            (HTTPUrlScraper(), SeleniumBaseUrlScraper())
-        )
-        from b2b_firmographic_crawler.parsers.company_page_parser import CraftParser
-
-        self.page_parser = page_parser or CraftParser()
+        self.url_scraper = url_scraper
+        self.page_parser = page_parser
         self._disk_cache = DiskCache(CompanyData, cache_dir or os.getcwd())
 
     def fetch_page(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:

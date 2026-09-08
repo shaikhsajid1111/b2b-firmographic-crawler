@@ -14,7 +14,13 @@ from b2b_firmographic_crawler.logger import get_logger
 logger = get_logger(__name__)
 
 
-class SeleniumBaseUrlScraper(UrlScraper):
+class CraftSeleniumUrlScraper(UrlScraper):
+    """Selenium-based URL scraper for Craft.co pages.
+
+    Uses SeleniumBase UC mode to load JavaScript-rendered pages and
+    extract window.App.cache data.
+    """
+
     def __init__(self, *, headless: bool = False, page_load_timeout: int = 30) -> None:
         self.headless = headless
         self.page_load_timeout = page_load_timeout
@@ -80,7 +86,7 @@ def main() -> None:
     )
     arguments = argument_parser.parse_args()
 
-    html = SeleniumBaseUrlScraper(headless=arguments.headless).scrape(arguments.url)
+    html = CraftSeleniumUrlScraper(headless=arguments.headless).scrape(arguments.url)
     print(html)
 
 

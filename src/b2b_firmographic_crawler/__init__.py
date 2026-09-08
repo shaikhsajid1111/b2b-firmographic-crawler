@@ -15,7 +15,7 @@ from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig, IQuery
 from b2b_firmographic_crawler.interfaces.search_response import ISearchResponse
 from b2b_firmographic_crawler.models.company_data import CompanyData
 from b2b_firmographic_crawler.sources.base import SourceProvider
-from b2b_firmographic_crawler.sources.craft_source import CraftSource
+from b2b_firmographic_crawler.sources.craft.provider import CraftSource
 from b2b_firmographic_crawler.sources.registry import SourceRegistry
 
 __version__ = "1.0.0"
@@ -70,9 +70,7 @@ class B2BFirmographicCrawler:
         """Instantiate (and cache) the provider for the given source string."""
         key = (source or "").strip().lower()
         if key not in self._providers:
-            self._providers[key] = SourceRegistry.create(
-                key, cache_dir=self.cache_dir
-            )
+            self._providers[key] = SourceRegistry.create(key, cache_dir=self.cache_dir)
         return self._providers[key]
 
     def available_sources(self) -> List[str]:

@@ -24,8 +24,12 @@ from b2b_firmographic_crawler import (
     register_source,
 )
 from b2b_firmographic_crawler.base.scraper import CompanyNameScraper, UrlScraper
-from b2b_firmographic_crawler.parsers.company_page_parser import CraftParser
-from b2b_firmographic_crawler.parsers.search_result_parser import CraftSearchParser
+from b2b_firmographic_crawler.sources.craft.parsers.company_page_parser import (
+    CraftParser,
+)
+from b2b_firmographic_crawler.sources.craft.parsers.search_result_parser import (
+    CraftSearchParser,
+)
 from b2b_firmographic_crawler.sources.craft_source import CraftSource
 from b2b_firmographic_crawler.storage.persistent_disk_cache import DiskCache
 
