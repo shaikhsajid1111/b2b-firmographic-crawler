@@ -2,12 +2,20 @@
 
 **A pluggable Python web crawler that turns public company pages into clean, validated firmographic data.**
 
-[![PyPI version](https://img.shields.io/pypi/v/b2b-firmographic-crawler)](https://pypi.org/project/b2b-firmographic-crawler/)
-[![Python versions](https://img.shields.io/pypi/pyversions/b2b-firmographic-crawler)](https://pypi.org/project/b2b-firmographic-crawler/)
+[![Python versions](https://img.shields.io/pypi/pyversions/3.14)](https://pypi.org/project/b2b-firmographic-crawler/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Beta-blue)](https://pypi.org/project/b2b-firmographic-crawler/)
 
 b2b-firmographic-crawler searches for companies on supported data sources (Craft.co today, Owler and Crunchbase pluggable), scrapes their public company pages, and returns the result as a fully typed, validated `CompanyData` model — funding rounds, employee counts, office locations, key executives, industries, income statements and more.
+
+## Disclaimer & privacy
+
+> **⚠️ This project is just code — the person using it is solely responsible for every action taken with it.**
+
+- b2b-firmographic-crawler accesses **only publicly available, unauthenticated web pages**. It does not log in anywhere, does not ask for or use credentials, and does not access, collect, or process any private, personal, or authenticated data. Anything behind logins, paywalls, or API keys is out of scope **by design**.
+- The software is provided **"AS IS", WITHOUT WARRANTY OF ANY KIND** (see the [MIT license](LICENSE)). The authors and contributors are **not liable** for any claim, damages, or other liability arising from its use or misuse — including how you collect, store, process, share, resell, or publish any data obtained with it.
+- **You** are solely responsible for making sure your use complies with all applicable laws and regulations — including copyright, data-protection and privacy laws (e.g. GDPR, CCPA), and computer-misuse laws — as well as each website's **terms of service**, **robots.txt**, and reasonable **rate limits**.
+- Do not use this tool for spam, harassment, surveillance, profiling of individuals, discrimination, or any unlawful purpose. If a website owner signals (through their terms, robots directives, or otherwise) that they do not want their data collected, respect that.
 
 ## Features
 
@@ -21,6 +29,7 @@ b2b-firmographic-crawler searches for companies on supported data sources (Craft
 
 ## Table of Contents
 
+- [Disclaimer & privacy](#disclaimer--privacy)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Usage](#usage)
@@ -560,10 +569,12 @@ The query model accepts `stock_ticket`, but no source implements symbol
 search yet (see [Roadmap](#roadmap)).
 
 **Is scraping legal?**
-This tool retrieves publicly available pages. You are responsible for
-complying with each website's terms of service, robots directives, rate
-limits and applicable data-protection law (e.g. GDPR). Cache aggressively,
-throttle politely, and only collect what you need.
+This tool retrieves only **public, unauthenticated** pages — but you remain
+solely responsible for how you use it and the data: check each website's
+terms of service, robots directives, rate limits and applicable
+data-protection law (e.g. GDPR). Cache aggressively, throttle politely, and
+only collect what you need. See
+[Disclaimer & privacy](#disclaimer--privacy) for the full statement.
 
 ## Roadmap
 
