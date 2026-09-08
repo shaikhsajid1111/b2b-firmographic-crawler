@@ -2,7 +2,7 @@
 
 **A pluggable Python web crawler that turns public company pages into clean, validated firmographic data.**
 
-[![Python versions](https://img.shields.io/pypi/pyversions/3.14)](https://pypi.org/project/b2b-firmographic-crawler/)
+[![Python versions](https://img.shields.io/badge/python-3.10+-blue.svg)](https://pypi.org/project/b2b-firmographic-crawler/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Beta-blue)](https://pypi.org/project/b2b-firmographic-crawler/)
 
