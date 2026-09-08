@@ -16,7 +16,7 @@ from b2b_firmographic_crawler.sources.craft.crawlers.company_name_scraper_chain 
     CompanyNameScraperChain,
 )
 from b2b_firmographic_crawler.sources.craft.crawlers.http_company_search_crawler import (
-    CompanySearchCrawler,
+    CraftCompanySearchCrawler,
 )
 from b2b_firmographic_crawler.sources.craft.crawlers.http_url_crawler import (
     CraftHttpUrlScraper,
@@ -60,7 +60,7 @@ class CraftSource(SourceProvider):
             searcher=searcher
             or CompanySearchByName(
                 CompanyNameScraperChain(
-                    (CompanySearchCrawler(), SeleniumbaseSearchCrawler())
+                    (CraftCompanySearchCrawler(), SeleniumbaseSearchCrawler())
                 ),
                 CraftSearchParser(),
             ),
@@ -69,9 +69,7 @@ class CraftSource(SourceProvider):
         self.scraping_service = CompanyPageScrapingService(
             page_parser=page_parser or CraftParser(),
             url_scraper=url_scraper
-            or CraftUrlScraperChain(
-                (CraftHttpUrlScraper(), CraftSeleniumUrlScraper())
-            ),
+            or CraftUrlScraperChain((CraftHttpUrlScraper(), CraftSeleniumUrlScraper())),
             cache_dir=cache_dir,
         )
 

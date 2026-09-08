@@ -10,16 +10,14 @@ from b2b_firmographic_crawler.sources.craft.utils import CraftScrapingUtils
 logger = get_logger(__name__)
 
 
-class CompanySearchCrawler(CompanyNameScraper):
+class CraftCompanySearchCrawler(CompanyNameScraper):
 
     def build_proxies(self, proxy: Optional[str]) -> Optional[dict]:
         if not proxy:
             return None
         return {"http": f"http://{proxy}", "https": f"http://{proxy}"}
 
-    def scrape(
-        self, query: str, config: Optional[ICrawlerConfig] = None
-    ) -> str:
+    def scrape(self, query: str, config: Optional[ICrawlerConfig] = None) -> str:
         try:
             headers = CraftScrapingUtils.prepare_search_query_headers()
             payload = CraftScrapingUtils.prepare_search_query_payload(query)

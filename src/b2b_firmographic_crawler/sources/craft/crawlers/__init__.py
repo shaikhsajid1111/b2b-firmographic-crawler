@@ -2,7 +2,7 @@ from b2b_firmographic_crawler.sources.craft.crawlers.company_name_scraper_chain 
     CompanyNameScraperChain,
 )
 from b2b_firmographic_crawler.sources.craft.crawlers.http_company_search_crawler import (
-    CompanySearchCrawler,
+    CraftCompanySearchCrawler,
 )
 from b2b_firmographic_crawler.sources.craft.crawlers.http_url_crawler import (
     CraftHttpUrlScraper,
@@ -19,7 +19,7 @@ from b2b_firmographic_crawler.sources.craft.crawlers.url_scraper_chain import (
 
 __all__ = [
     "CompanyNameScraperChain",
-    "CompanySearchCrawler",
+    "CraftCompanySearchCrawler",
     "CraftHttpUrlScraper",
     "CraftSeleniumUrlScraper",
     "CraftUrlScraperChain",
