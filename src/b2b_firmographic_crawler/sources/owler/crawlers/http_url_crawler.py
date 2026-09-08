@@ -8,15 +8,15 @@ from curl_cffi import requests
 from b2b_firmographic_crawler.base.scraper import UrlScraper
 from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig
 from b2b_firmographic_crawler.logger import get_logger
-from b2b_firmographic_crawler.sources.craft.utils import CraftScrapingUtils
+from b2b_firmographic_crawler.utils.scraping_utils import ScrapingUtils
 
 logger = get_logger(__name__)
 
 
-class CraftHttpUrlScraper(UrlScraper):
-    """HTTP URL scraper for Craft.co pages.
+class OwlerHttpUrlScraper(UrlScraper):
+    """HTTP URL scraper for owler.com pages.
 
-    Extracts window.App.cache data from JSON assigned in script tags.
+    Extracts window.__NEXT_DATA__.props.initialState from script tags.
     """
 
     def build_proxies(self, proxy: Optional[str]) -> Any:
@@ -27,9 +27,12 @@ class CraftHttpUrlScraper(UrlScraper):
     def _build_soup(self, html_markup: str) -> BeautifulSoup:
         return BeautifulSoup(html_markup, "html.parser")
 
-    def _extract_cache_from_scripts(self, soup: BeautifulSoup) -> Optional[Dict]:
+    def _extract_next_data_from_scripts(self, soup: BeautifulSoup) -> Optional[Dict]:
         """
-        Extract window.App.cache data from JSON assigned in script tags.
+        Extract window.__NEXT_DATA__.props.initialState from script tags.
+
+        Owler (Next.js) embeds its initial state in a script tag as
+        window.__NEXT_DATA__ = {..., props: {initialState: {...}}}
         """
         scripts = soup.find_all("script")
 
@@ -39,35 +42,35 @@ class CraftHttpUrlScraper(UrlScraper):
 
             script_content = script.string
 
-            assignments = (
-                (r"window\.App\.cache\s*=\s*", False),
-                (r"window\.App\s*=\s*", True),
-            )
-            for pattern, contains_cache in assignments:
-                match = re.search(pattern, script_content)
-                if not match:
-                    continue
+            # Look for window.__NEXT_DATA__ assignment
+            pattern = r"window\.__NEXT_DATA__\s*=\s*"
+            match = re.search(pattern, script_content)
+            if not match:
+                continue
 
-                try:
-                    json_source = re.sub(
-                        r"(?<=:)\s*undefined\b", "null", script_content[match.end():]
-                    )
-                    value, _ = json.JSONDecoder().raw_decode(json_source)
-                except json.JSONDecodeError as ex:
-                    logger.debug("Failed to parse %s JSON: %s", pattern, ex)
-                    continue
+            try:
+                json_source = re.sub(
+                    r"(?<=:)\s*undefined\b", "null", script_content[match.end() :]
+                )
+                value, _ = json.JSONDecoder().raw_decode(json_source)
+            except json.JSONDecodeError as ex:
+                logger.debug("Failed to parse __NEXT_DATA__ JSON: %s", ex)
+                continue
 
-                if contains_cache and isinstance(value, dict):
-                    value = value.get("cache")
-                if value is not None:
-                    logger.debug("Successfully extracted cache using: %s", pattern)
-                    return value
+            # Navigate to props.initialState
+            if isinstance(value, dict):
+                props = value.get("props", {})
+                initial_state = props.get("initialState")
+                if initial_state is not None:
+                    logger.debug("Successfully extracted __NEXT_DATA__.props.initialState")
+                    return initial_state
+
         return None
 
     def scrape(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
         try:
             logger.info("Starting HTTP crawl: %s", url)
-            headers = CraftScrapingUtils.prepare_search_query_headers()
+            headers = ScrapingUtils.prepare_default_headers()
             proxy: Optional[str] = config.proxy if config else None
             proxies = self.build_proxies(proxy) if config else None
             response = requests.request(
@@ -82,24 +85,24 @@ class CraftHttpUrlScraper(UrlScraper):
             response.raise_for_status()
             soup = self._build_soup(response.text)
 
-            # Extract cache data from script tags
-            cache_data = self._extract_cache_from_scripts(soup)
+            # Extract NEXT_DATA from script tags
+            next_data = self._extract_next_data_from_scripts(soup)
 
-            if not cache_data:
+            if not next_data:
                 logger.warning(
-                    "No window.App.cache data found in HTTP response for %s. "
+                    "No window.__NEXT_DATA__ data found in HTTP response for %s. "
                     "This may be because the data is loaded dynamically via JavaScript. "
                     "Consider using SeleniumBaseUrlScraper instead.",
                     url,
                 )
                 raise ValueError(
-                    "No window.App.cache data found in response. "
+                    "No window.__NEXT_DATA__ data found in response. "
                     "The target website may load data dynamically. "
                     "Use SeleniumBaseUrlScraper for full JavaScript support."
                 )
 
-            logger.info("Successfully extracted cache data from %s", url)
-            return json.dumps(cache_data)
+            logger.info("Successfully extracted __NEXT_DATA__ from %s", url)
+            return json.dumps(next_data)
 
         except Exception as ex:
             logger.exception(f"Error while scraping company URL with HTTP: {ex}")

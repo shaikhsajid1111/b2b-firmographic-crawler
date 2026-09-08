@@ -24,7 +24,7 @@ from b2b_firmographic_crawler.sources.craft.crawlers.http_url_crawler import (
 from b2b_firmographic_crawler.sources.craft.crawlers.selenium_base_search_crawler import (
     SeleniumbaseSearchCrawler,
 )
-from b2b_firmographic_crawler.sources.craft.crawlers.selenium_url_crawler import (
+from b2b_firmographic_crawler.sources.craft.crawlers.selenium_base_url_crawler import (
     CraftSeleniumUrlScraper,
 )
 from b2b_firmographic_crawler.sources.craft.crawlers.url_scraper_chain import (

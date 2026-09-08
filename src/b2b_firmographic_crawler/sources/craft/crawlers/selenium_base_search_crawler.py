@@ -9,6 +9,7 @@ from seleniumbase import Driver
 from b2b_firmographic_crawler.base.scraper import CompanyNameScraper
 from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig
 from b2b_firmographic_crawler.logger import get_logger
+from b2b_firmographic_crawler.sources.craft.utils import CraftScrapingUtils
 from b2b_firmographic_crawler.utils.scraping_utils import ScrapingUtils
 
 logger = get_logger(__name__)
@@ -34,7 +35,7 @@ class SeleniumbaseSearchCrawler(CompanyNameScraper):
 
     @staticmethod
     def _graphql_response_body(driver, timeout: float) -> str:
-        graphql_url = ScrapingUtils.get_search_query_url()
+        graphql_url = CraftScrapingUtils.get_search_query_url()
         response_ids: set[str] = set()
         response_urls: dict[str, str] = {}
 
@@ -68,7 +69,7 @@ class SeleniumbaseSearchCrawler(CompanyNameScraper):
     def scrape(
         self, query: str, config: Optional[ICrawlerConfig] = None
     ) -> str:
-        url = ScrapingUtils.build_craft_page_url()
+        url = CraftScrapingUtils.build_craft_page_url()
         logger.info("Starting crawl: %s", url)
         request_timeout = (
             config.request_timeout if config is not None else self.page_load_timeout

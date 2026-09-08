@@ -1,53 +1,36 @@
-import json
 import random
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class ScrapingUtils:
-
-    @staticmethod
-    def get_search_query_url() -> str:
-        return "https://craft.co/graphql"
-
-    @staticmethod
-    def prepare_search_query_headers() -> Dict[str, str]:
-        headers = {
-            "accept": "*/*",
-            "accept-language": "en-GB,en;q=0.8",
-            "content-type": "application/json",
-            "origin": "https://craft.co",
-            "priority": "u=1, i",
-            "referer": "https://craft.co/amazon",
-            "sec-ch-ua": '"Not=A?Brand";v="99", "Brave";v="151", "Chromium";v="151"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Linux"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "sec-gpc": "1",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        }
-        return headers
-
-    @staticmethod
-    def prepare_search_query_payload(query: str) -> str:
-        return json.dumps(
-            {
-                "operationName": "UniversalSearch",
-                "variables": {"query": query},
-                "query": "query UniversalSearch($query: String\u0021) { universalSearch(query: $query) { ...UniversalSearchResult __typename }}fragment UniversalSearchResult on SearchSuggestion { company { ...CompanyWithLogo __typename } name type url __typename}fragment CompanyWithLogo on Company { id slug displayName logo { id url __typename } __typename}",
-            }
-        )
-
-    @staticmethod
-    def build_craft_page_url(query: str = "google") -> str:
-        return f"https://craft.co/{query}"
+    """Generic scraping utilities shared across all sources."""
 
     @staticmethod
     def enter_keys_to_element(element: Any, query: str) -> None:
+        """Simulate human-like typing into an element."""
         element.click()
         element.clear()
         for char in query:
             element.send_keys(char)
             time.sleep(random.uniform(0.06, 0.18))
+
+    @staticmethod
+    def prepare_default_headers() -> dict:
+        """Return generic browser headers suitable for most websites."""
+        return {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "accept-language": "en-US,en;q=0.9",
+            "accept-encoding": "gzip, deflate, br",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "sec-ch-ua": '"Not=A?Brand";v="99", "Chromium";v="122", "Google Chrome";v="122"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        }
