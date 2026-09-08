@@ -1,7 +1,7 @@
 [project]
 name = "b2b-firmographic-crawler"
 version = "0.1.0"
-description = "A web crawler for collecting B2B firmographic data."
+description = "A pluggable web crawler that extracts firmographic company data (funding, employees, locations, executives, financials) into validated Pydantic models."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -25,12 +25,33 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
 ]
-dependencies = []
+dependencies = [
+    "babel>=2.18.0",
+    "beautifulsoup4>=4.15.0",
+    "curl-cffi>=0.16.3",
+    "diskcache>=5.6.3",
+    "fake-headers>=1.0.2",
+    "price-parser>=0.5.1",
+    "psycopg[binary]>=3.3.5",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "pymongo>=4.18.0",
+    "python-dateutil>=2.9.0.post0",
+    "selenium>=4.48.0",
+    "seleniumbase>=4.53.7",
+    "tldextract>=5.3.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/shaikhsajid1111/b2b-firmographic-crawler"
 Repository = "https://github.com/shaikhsajid1111/b2b-firmographic-crawler"
 Issues = "https://github.com/shaikhsajid1111/b2b-firmographic-crawler/issues"
+
+[project.optional-dependencies]
+export = [
+    "pandas>=2.3.3",
+    "pyarrow>=25.0.1",
+]
 
 [build-system]
 requires = ["hatchling"]

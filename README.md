@@ -1,1 +1,603 @@
 # b2b-firmographic-crawler
+
+**A pluggable Python web crawler that turns public company pages into clean, validated firmographic data.**
+
+[![PyPI version](https://img.shields.io/pypi/v/b2b-firmographic-crawler)](https://pypi.org/project/b2b-firmographic-crawler/)
+[![Python versions](https://img.shields.io/pypi/pyversions/b2b-firmographic-crawler)](https://pypi.org/project/b2b-firmographic-crawler/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Beta-blue)](https://pypi.org/project/b2b-firmographic-crawler/)
+
+b2b-firmographic-crawler searches for companies on supported data sources (Craft.co today, Owler and Crunchbase pluggable), scrapes their public company pages, and returns the result as a fully typed, validated `CompanyData` model — funding rounds, employee counts, office locations, key executives, industries, income statements and more.
+
+## Features
+
+- **Source-agnostic API** — choose a data source with a plain string: `source="craft"`
+- **Typed & validated output** — every record is a [Pydantic](https://docs.pydantic.dev/) `CompanyData` model
+- **Resilient scraping** — HTTP-first (`curl-cffi` browser impersonation) with an automatic SeleniumBase/UC browser fallback chain
+- **Persistent caching** — resumable runs with configurable TTLs, per record type
+- **Pluggable storage** — MongoDB and PostgreSQL stores included
+- **Export-ready** — JSON, CSV and Parquet exporters
+- **Extensible by design** — register your own source with a single decorator
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+- [Sources](#sources)
+- [Configuration](#configuration)
+- [Caching](#caching)
+- [Exporting data](#exporting-data)
+- [Storing data](#storing-data)
+- [The data model](#the-data-model)
+- [Adding a new source](#adding-a-new-source)
+- [Logging](#logging)
+- [Testing](#testing)
+- [Project structure](#project-structure)
+- [FAQ](#faq)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Installation
+
+Requires **Python 3.10+**.
+
+```bash
+# with pip
+pip install b2b-firmographic-crawler
+
+# or with uv (recommended)
+uv add b2b-firmographic-crawler
+```
+
+To also get the CSV/Parquet exporters (pandas + PyArrow):
+
+```bash
+pip install "b2b-firmographic-crawler[export]"
+```
+
+> [!NOTE]
+> On the first run that needs the browser fallback, SeleniumBase downloads a Chrome
+> binary automatically. Pure-HTTP scraping has no browser dependency.
+
+## Quick start
+
+```python
+from b2b_firmographic_crawler import B2BFirmographicCrawler
+
+crawler = B2BFirmographicCrawler(cache_dir="./cache")
+
+# 1. Find a company by name
+results = crawler.search_company("stripe", source="craft")
+print(results[0].company_name)   # Stripe
+print(results[0].source_url)     # https://craft.co/stripe
+
+# 2. Scrape its public company page into a validated model
+company = crawler.get_company_data(results[0].source_url, source="craft")
+
+print(company.company_name)            # Stripe
+print(company.company_domain)          # stripe.com
+print(company.company_founded_year)    # 2010
+print(company.company_funding_info)    # [CompanyFundingInfo(funding_amount=..., ...)]
+print(company.company_locations)       # [CompanyLocation(city=..., is_headquarter=True), ...]
+print(company.key_executives)          # [KeyExecutive(name=..., title=...), ...]
+```
+
+That's it — two calls produce a complete, typed firmographic record. Everything
+below is optional configuration.
+
+## Usage
+
+### Searching for companies
+
+`search_company()` returns a list of `ISearchResponse` suggestions — company
+name, canonical page URL, slug and logo:
+
+```python
+results = crawler.search_company("airbnb", source="craft")
+
+for result in results:
+    print(result.company_name, "->", result.source_url)
+
+first = results[0]
+first.company_name   # 'Airbnb'
+first.source_url     # 'https://craft.co/airbnb'
+first.slug           # 'airbnb'
+first.logo_url       # 'https://...'
+```
+
+If nothing matches, an empty list is returned.
+
+### Scraping a company page
+
+```python
+company = crawler.get_company_data("https://craft.co/airbnb", source="craft")
+```
+
+Returns `CompanyData` (see [The data model](#the-data-model)), or `None` when
+the page could not be parsed.
+
+### Search + scrape in one call
+
+```python
+company = crawler.get_company_data_by_name("airbnb", source="craft")
+```
+
+### Working with results
+
+`CompanyData` is a standard Pydantic model, so it composes with the rest of
+your stack:
+
+```python
+company.model_dump(mode="json")        # plain dict (JSON-safe)
+company.model_dump_json(indent=2)      # pretty JSON string
+company.company_industries             # ['travel', 'hospitality', ...]
+
+for executive in company.key_executives:
+    print(executive.name, "-", executive.title)
+```
+
+## Sources
+
+The data source is always a plain string. Names are case-insensitive and
+surrounding whitespace is ignored.
+
+| Source | Status | Notes |
+| ------ | ------ | ----- |
+| `craft` | Implemented | craft.co company search + firmographic pages |
+| `owler` | Planned | see [Adding a new source](#adding-a-new-source) |
+| `crunchbase` | Planned | see [Adding a new source](#adding-a-new-source) |
+
+```python
+crawler.available_sources()                        # ['craft'] + anything you register
+crawler.search_company("stripe", source="CRAFT")   # case-insensitive
+```
+
+Calling an unregistered source raises a `ValueError` listing every available
+source.
+
+## Configuration
+
+### `ICrawlerConfig`
+
+Pass a config to the crawler (applies to every call) or per call:
+
+```python
+from b2b_firmographic_crawler import ICrawlerConfig
+
+config = ICrawlerConfig(
+    proxy="user:pass@proxy-host:8080",   # HTTP proxy for scraping
+    headless=True,                       # run the fallback browser headless
+    request_timeout=45.0,                # seconds per request / page load
+    company_cache_expiry_time_days=30,   # TTL for scraped company pages
+    search_cache_expiry_time_days=7,     # TTL for search results
+    force_rescrape=False,                # True = ignore the cache completely
+)
+
+crawler = B2BFirmographicCrawler(config=config, cache_dir="./cache")
+# or one-off:
+company = crawler.get_company_data(url, source="craft", config=config)
+```
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `request_timeout` | `float` | `30.0` | Timeout for HTTP requests and browser page loads (must be > 0). |
+| `user_agent` | `str` | `""` | Custom User-Agent header for HTTP requests. |
+| `proxy` | `str \| None` | `None` | HTTP proxy as `host:port` or `user:pass@host:port`. |
+| `headless` | `bool` | `True` | Run the fallback browser headless. |
+| `uc` | `bool` | `True` | SeleniumBase UC (undetected) mode for bot-protected pages. |
+| `company_cache_expiry_time_days` | `int` | `90` | Days a scraped company record stays fresh. |
+| `search_cache_expiry_time_days` | `int` | `90` | Days search results stay fresh. |
+| `force_rescrape` | `bool` | `False` | Bypass all caches and scrape live. |
+
+### `IQuery` — search queries
+
+```python
+from b2b_firmographic_crawler import IQuery
+
+IQuery(company_name="stripe")   # used internally by search_company()
+IQuery(stock_ticket="CRWD")     # at least one field must be non-empty
+```
+
+> Stock-symbol search is accepted by the query model but not implemented in
+> any source yet (see [Roadmap](#roadmap)).
+
+## Caching
+
+Every source caches scraped pages and search results on disk
+([diskcache](https://pypi.org/project/diskcache/)), so repeated runs are fast
+and gentle on the target site:
+
+- Records live under `<cache_dir>/<ModelName>/` — `CompanyData/` for company
+  pages and `ISearchResponse/` for search results.
+- `cache_dir` defaults to the current working directory; pass
+  `B2BFirmographicCrawler(cache_dir=...)` to control it.
+- Entries expire after `company_cache_expiry_time_days` /
+  `search_cache_expiry_time_days`.
+- Set `force_rescrape=True` to ignore cached data for a run.
+
+```python
+from b2b_firmographic_crawler import CompanyData
+from b2b_firmographic_crawler.storage import DiskCache
+
+cache = DiskCache(CompanyData, base_dir="./cache")   # ./cache/CompanyData
+cache.delete("https://craft.co/stripe")              # drop one entry
+cache.clear()                                        # drop the whole model's cache
+```
+
+## Exporting data
+
+```python
+from b2b_firmographic_crawler.services import (
+    CSVExporter,
+    JSONExporter,
+    ParquetExporter,
+)
+
+company = crawler.get_company_data_by_name("stripe")
+
+JSONExporter().export_data(company, filepath="stripe.json")     # no pandas needed
+CSVExporter().export_data(company, filepath="stripe.csv")       # requires [export] extra
+ParquetExporter().export_data(company, filepath="stripe.parquet")
+```
+
+JSON works out of the box. CSV/Parquet flatten nested fields via
+`pandas.json_normalize` and require the `[export]` extra.
+
+## Storing data
+
+Both stores upsert a whole `CompanyData` document keyed by `company_domain`,
+so re-running a crawler simply refreshes the existing rows/documents.
+
+### PostgreSQL (JSONB)
+
+```python
+from b2b_firmographic_crawler.interfaces.iconfig import IDatabaseConfig
+from b2b_firmographic_crawler.storage import PostgreSQLStorage
+
+config = IDatabaseConfig(
+    driver="postgresql",
+    name="companies",
+    host="localhost",
+    user="postgres",
+    password="secret",
+    table="company_data",       # optional extra: table name
+)
+
+store = PostgreSQLStorage(config)
+store.connect()                 # creates the table if missing
+store.store_data(company)       # upsert keyed by company_domain
+```
+
+### MongoDB
+
+```python
+from b2b_firmographic_crawler.storage import MongoDBStorage
+
+store = MongoDBStorage(
+    IDatabaseConfig(
+        driver="mongodb+srv",
+        name="companies",
+        host="cluster0.abc123.mongodb.net",
+        user="crawler",
+        password="secret",
+    )
+)
+store.connect()
+store.store_data(company)       # upsert into the "company_data" collection
+```
+
+### Configuration via environment variables
+
+`IDatabaseConfig` is a pydantic-settings model with the `DB_` prefix, so
+credentials can stay out of your code:
+
+```bash
+export DB_DRIVER=postgresql
+export DB_NAME=companies
+export DB_HOST=localhost
+export DB_USER=postgres
+export DB_PASSWORD=secret
+```
+
+```python
+config = IDatabaseConfig()      # reads DB_* from the environment
+```
+
+| Variable | Field | Notes |
+| -------- | ----- | ----- |
+| `DB_DRIVER` | `driver` | `postgresql`, `mongodb`, `mongodb+srv`, ... |
+| `DB_NAME` | `name` | Database name. |
+| `DB_HOST` | `host` | Default `localhost`. |
+| `DB_PORT` | `port` | Optional; sensible defaults per driver. |
+| `DB_USER` / `DB_PASSWORD` | `user` / `password` | Optional credentials. |
+
+## The data model
+
+Every source returns the same schema. `CompanyData` is the top-level model;
+all nested models live in `b2b_firmographic_crawler.models`.
+
+### `CompanyData`
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `company_name` | `str` | Required. |
+| `company_domain` | `str` | Registered domain, e.g. `stripe.com`. |
+| `company_industries` | `list[str]` | Lower-cased industry tags. |
+| `company_founded_year` | `int \| None` | |
+| `company_website_url` | `str \| None` | |
+| `company_funding_info` | `list[CompanyFundingInfo]` | |
+| `company_logo_url` | `str \| None` | |
+| `company_status` | `CurrentCompanyStatus` | Status enum + `last_updated`. |
+| `company_description` | `str \| None` | |
+| `key_executives` | `list[KeyExecutive]` | |
+| `company_type` | `str \| None` | e.g. `private`, `public`. |
+| `company_linkedin_url` | `str \| None` | |
+| `company_twitter_url` | `str \| None` | |
+| `company_symbol` | `str \| None` | Stock ticker, if known. |
+| `company_operating_metrics` | `list[CompanyOperatingMetric]` | |
+| `company_employee_counts` | `list[CompanyEmployeeCount]` | Time series. |
+| `company_locations` | `list[CompanyLocation]` | `is_headquarter` flags the HQ. |
+| `similar_companies` | `list[SimilarCompany]` | Competitors. |
+| `other_social_media_urls` | `dict[OtherSocialMedia, str] \| None` | `instagram`, `facebook`, `crunchbase`. |
+| `company_income_statements` | `list[IncomeStatement]` | |
+| `last_scraped_at` | `datetime` | UTC, set automatically per record. |
+
+### Nested models
+
+- **`CompanyFundingInfo`** — `funding_round`, `funding_amount` (float),
+  `funding_currency`, `funding_date`, `investors` (list of str)
+- **`CompanyEmployeeCount`** — `total_employees` (int), `month`, `year`
+- **`CompanyLocation`** — `city`, `state`, `country`, `country_code`,
+  `postal_code`, `address`, `latitude`, `longitude`, `is_headquarter`
+- **`KeyExecutive`** — `name`, `title`, `linkedin_url`, `twitter_url`,
+  `other_social_media_urls`
+- **`CompanyOperatingMetric`** — `company_specific_kpi`, `metric_value`,
+  `unit_type`, `date`
+- **`IncomeStatement`** — `revenue`, `currency`, `net_income`,
+  `gross_profit_margin`, `end_date`, `period_type`, `ebitda`, `gross_profit`
+- **`SimilarCompany`** — `company_name`, `company_industries`
+- **`CurrentCompanyStatus`** — `status` (`CompanyStatus`: `active`,
+  `inactive`, `acquired`, `bankrupt`, `closed`, `unknown`), `last_updated`
+
+Example record (abridged):
+
+```json
+{
+  "company_name": "Stripe",
+  "company_domain": "stripe.com",
+  "company_founded_year": 2010,
+  "company_funding_info": [
+    {
+      "funding_round": "unknown",
+      "funding_amount": 9400000000.0,
+      "funding_currency": "USD"
+    }
+  ],
+  "company_locations": [
+    {
+      "city": "South San Francisco",
+      "country": "United States",
+      "is_headquarter": true
+    }
+  ],
+  "last_scraped_at": "2026-09-08T12:00:00Z"
+}
+```
+
+## Adding a new source
+
+The crawler is source-agnostic: each source bundles a **searcher** (find
+companies by name) and a **scraper + parser** (extract `CompanyData` from a
+company page). Implement the pieces for your website, register the provider
+under a string, and it is instantly available through the same facade —
+caching, exporters and storage included.
+
+### 1. Implement the low-level pieces
+
+```python
+# owler_source.py
+import os
+
+from b2b_firmographic_crawler import (
+    CompanyData,
+    ICrawlerConfig,
+    ISearchResponse,
+    SourceProvider,
+    register_source,
+)
+from b2b_firmographic_crawler.base.parser import Parser
+from b2b_firmographic_crawler.base.scraper import CompanyNameScraper, UrlScraper
+from b2b_firmographic_crawler.base.search_parser import SearchResponseParser
+from b2b_firmographic_crawler.storage import DiskCache
+from b2b_firmographic_crawler.utils.general_utils import GeneralUtils
+
+
+class OwlerScraper(UrlScraper):
+    """Fetches an Owler company page (HTTP first, browser fallback)."""
+
+    def build_proxies(self, proxy):
+        return {"http": f"http://{proxy}", "https": f"http://{proxy}"} if proxy else None
+
+    def scrape(self, url, config=None) -> str:
+        ...  # fetch https://www.owler.com/<path> and return raw HTML/JSON
+
+
+class OwlerParser(Parser):
+    """Maps the raw page onto CompanyData."""
+
+    def parse(self, data: str) -> CompanyData | None:
+        ...  # parse and return CompanyData(company_name=..., ...)
+
+
+class OwlerSearchScraper(CompanyNameScraper):
+    def scrape(self, query, config=None) -> str:
+        ...  # return raw search results for a company name
+
+
+class OwlerSearchParser(SearchResponseParser):
+    def parse(self, data) -> list[ISearchResponse]:
+        ...  # -> [ISearchResponse(company_name=..., source_url=..., slug=...), ...]
+```
+
+### 2. Wire them together and register
+
+```python
+@register_source("owler")
+class OwlerSource(SourceProvider):
+    source_name = "owler"
+
+    def __init__(self, cache_dir=None, **kwargs):
+        self._scraper = OwlerScraper()
+        self._parser = OwlerParser()
+        self._search_scraper = OwlerSearchScraper()
+        self._search_parser = OwlerSearchParser()
+        self._cache = DiskCache(CompanyData, cache_dir or os.getcwd())
+
+    def get_company_data(self, url, config=None):
+        config = config or ICrawlerConfig()
+        if not config.force_rescrape:
+            cached = self._cache.get(url)
+            if cached:
+                return cached
+        page = self._scraper.scrape(url, config)
+        data = self._parser.parse(page)
+        self._cache.set(
+            url,
+            data,
+            GeneralUtils.generate_time_from_now(
+                config.company_cache_expiry_time_days
+            ).timestamp(),
+        )
+        return data
+
+    def search_company(self, query, config=None):
+        response = self._search_scraper.scrape(query, config)
+        return self._search_parser.parse(response)
+```
+
+### 3. Use it like any other source
+
+```python
+from b2b_firmographic_crawler import B2BFirmographicCrawler
+import owler_source  # noqa: F401 — registers the source on import
+
+crawler = B2BFirmographicCrawler()
+company = crawler.get_company_data_by_name("acme", source="owler")
+```
+
+> Tip: for sources with the same *scrape → parse → cache* shape you can reuse
+> `CraftCompanyPageScrapingService` and `CraftCompanySearchingService` from
+> `b2b_firmographic_crawler.orchestrators` and only plug in your own
+> scraper/parser (that is exactly how `CraftSource` is built, and how
+> `test.py` fakes an Owler source).
+
+## Logging
+
+All internals log through Python's standard `logging` module, controlled with
+two environment variables:
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `CRAWLER_LOG_LEVEL` | `INFO` | Any stdlib level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, ... |
+| `CRAWLER_LOG_FORMAT` | `%(asctime)s %(levelname)s %(name)s: %(message)s` | stdlib log format string |
+
+```bash
+CRAWLER_LOG_LEVEL=DEBUG uv run python your_script.py
+```
+
+## Testing
+
+The repository ships an offline test suite — no network, no browser — covering
+the parser, cache, search/scrape flows and the source registry:
+
+```bash
+uv sync                     # set up the environment
+uv run python test.py       # run the suite
+```
+
+The tests are plain functions, so they also run under pytest:
+`uv run pytest test.py`.
+
+## Project structure
+
+```text
+src/b2b_firmographic_crawler/
+├── __init__.py            # B2BFirmographicCrawler facade + register_source
+├── models/                # CompanyData and nested Pydantic models
+├── interfaces/            # ICrawlerConfig, IQuery, IDatabaseConfig, ISearchResponse
+├── base/                  # abstract contracts (scraper, parser, searcher, storage, ...)
+├── crawlers/              # HTTP + SeleniumBase crawlers and fallback chains
+├── parsers/               # Craft page & search-result parsers
+├── searchers/             # search-by-name orchestration
+├── orchestrators/         # search & scraping services with caching
+├── sources/               # SourceProvider base, SourceRegistry, Craft source
+├── storage/               # DiskCache, MongoDBStorage, PostgreSQLStorage
+├── services/              # JSON / CSV / Parquet exporters
+├── utils/                 # scraping + general helpers
+├── global_utils/          # URI & currency helpers
+└── logger.py              # logging setup
+```
+
+## FAQ
+
+**Why is the first scrape slower?**
+Craft serves much of its data client-side. The HTTP scraper tries first; if
+the payload is not present in the HTML it raises and the SeleniumBase browser
+fallback takes over automatically (downloading Chrome on first use).
+
+**Where is my cache? How do I reset it?**
+Under `cache_dir` (the current directory by default): `CompanyData/` and
+`ISearchResponse/`. Delete those folders, or call `DiskCache(...).clear()`.
+
+**Can I scrape through a proxy?**
+Yes — `ICrawlerConfig(proxy="host:port")`. Both the HTTP and browser scrapers
+honour it.
+
+**Can I search by stock symbol?**
+The query model accepts `stock_ticket`, but no source implements symbol
+search yet (see [Roadmap](#roadmap)).
+
+**Is scraping legal?**
+This tool retrieves publicly available pages. You are responsible for
+complying with each website's terms of service, robots directives, rate
+limits and applicable data-protection law (e.g. GDPR). Cache aggressively,
+throttle politely, and only collect what you need.
+
+## Roadmap
+
+- [ ] Owler source
+- [ ] Crunchbase source
+- [ ] Search by stock symbol
+- [ ] Concurrent scraping with rate limiting and retries
+- [ ] More exporters (Excel, SQLite)
+
+## Contributing
+
+Issues and pull requests are welcome! For local development:
+
+```bash
+git clone https://github.com/shaikhsajid1111/b2b-firmographic-crawler.git
+cd b2b-firmographic-crawler
+uv sync
+uv run python test.py
+```
+
+Please add tests for any new source or parser change and keep the offline
+suite green.
+
+## License
+
+[MIT](LICENSE) © Sajid Shaikh
+
+## Acknowledgements
+
+Built on top of great open-source projects:
+[Pydantic](https://docs.pydantic.dev/),
+[curl-cffi](https://github.com/lexiforest/curl_cffi),
+[SeleniumBase](https://github.com/seleniumbase/SeleniumBase),
+[diskcache](https://pypi.org/project/diskcache/),
+[tldextract](https://github.com/john-kurkowski/tldextract),
+[price-parser](https://github.com/scrapinghub/price-parser) and
+[Babel](https://babel.pocoo.org/).

@@ -1,0 +1,71 @@
+import os
+from typing import Optional
+
+from b2b_firmographic_crawler.base.parser import Parser
+from b2b_firmographic_crawler.base.scraper import UrlScraper
+from b2b_firmographic_crawler.crawlers.http_url_crawler import HTTPUrlScraper
+from b2b_firmographic_crawler.crawlers.selenium_base_url_crawler import (
+    SeleniumBaseUrlScraper,
+)
+from b2b_firmographic_crawler.crawlers.url_scraper_chain import UrlScraperChain
+from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig
+from b2b_firmographic_crawler.logger import get_logger
+from b2b_firmographic_crawler.models.company_data import CompanyData
+from b2b_firmographic_crawler.storage.persistent_disk_cache import DiskCache
+from b2b_firmographic_crawler.utils.general_utils import GeneralUtils
+
+logger = get_logger("Craft Scraping Orchestrator")
+
+
+class CraftCompanyPageScrapingService:
+    def __init__(
+        self,
+        url_scraper: Optional[UrlScraper] = None,
+        page_parser: Optional[Parser] = None,
+        cache_dir: Optional[str] = None,
+    ):
+        self.url_scraper = url_scraper or UrlScraperChain(
+            (HTTPUrlScraper(), SeleniumBaseUrlScraper())
+        )
+        from b2b_firmographic_crawler.parsers.company_page_parser import CraftParser
+
+        self.page_parser = page_parser or CraftParser()
+        self._disk_cache = DiskCache(CompanyData, cache_dir or os.getcwd())
+
+    def fetch_page(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
+        try:
+            return self.url_scraper.scrape(url, config)
+        except Exception:
+            logger.exception("Error while fetching page: %s", url)
+            raise
+
+    def parse_page(self, page_data: str) -> Optional[CompanyData]:
+        try:
+            return self.page_parser.parse(page_data)
+        except Exception:
+            logger.exception("Error while parsing page")
+            raise
+
+    def scrape_company_page(
+        self, url: str, config: Optional[ICrawlerConfig] = None
+    ) -> Optional[CompanyData]:
+        crawler_config = config if config is not None else ICrawlerConfig()
+        try:
+            if not crawler_config.force_rescrape:
+                cached_data = self._disk_cache.get(url)
+                if cached_data:
+                    return cached_data
+
+            page_data = self.fetch_page(url, crawler_config)
+            parsed_page = self.page_parser.parse(page_data)
+            self._disk_cache.set(
+                url,
+                parsed_page,
+                GeneralUtils.generate_time_from_now(
+                    crawler_config.company_cache_expiry_time_days
+                ).timestamp(),
+            )
+            return parsed_page
+        except Exception:
+            logger.exception("Error while processing page: %s", url)
+            raise
