@@ -30,7 +30,7 @@ from b2b_firmographic_crawler.sources.craft.parsers.company_page_parser import (
 from b2b_firmographic_crawler.sources.craft.parsers.search_result_parser import (
     CraftSearchParser,
 )
-from b2b_firmographic_crawler.sources.craft_source import CraftSource
+from b2b_firmographic_crawler.sources.craft.provider import CraftSource
 from b2b_firmographic_crawler.storage.persistent_disk_cache import DiskCache
 
 # --------------------------------------------------------------------------
