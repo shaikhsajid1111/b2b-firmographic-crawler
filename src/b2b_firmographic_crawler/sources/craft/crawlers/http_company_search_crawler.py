@@ -5,25 +5,37 @@ from curl_cffi import requests
 from b2b_firmographic_crawler.base.scraper import CompanyNameScraper
 from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig
 from b2b_firmographic_crawler.logger import get_logger
-from b2b_firmographic_crawler.utils.scraping_utils import ScrapingUtils
+from b2b_firmographic_crawler.sources.craft.utils import CraftScrapingUtils
 
 logger = get_logger(__name__)
 
 
-class CompanySearchCrawler(CompanyNameScraper):
+class CraftCompanySearchCrawler(CompanyNameScraper):
+    """Name search via Craft's GraphQL ``UniversalSearch`` endpoint (HTTP POST)."""
 
     def build_proxies(self, proxy: Optional[str]) -> Optional[dict]:
+        """Map proxy config to curl-cffi's ``{"http": ..., "https": ...}`` form, or ``None`` when unset."""
         if not proxy:
             return None
         return {"http": f"http://{proxy}", "https": f"http://{proxy}"}
 
-    def scrape(
-        self, query: str, config: Optional[ICrawlerConfig] = None
-    ) -> str:
+    def scrape(self, query: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """POST the ``UniversalSearch`` query and return the raw response.
+
+        Args:
+            query: Free-text company name.
+            config: Proxy/timeout settings (Chrome impersonation always on).
+
+        Returns:
+            Raw GraphQL response body as text.
+
+        Raises:
+            Exception: Transport/HTTP errors (after logging).
+        """
         try:
-            headers = ScrapingUtils.prepare_search_query_headers()
-            payload = ScrapingUtils.prepare_search_query_payload(query)
-            url = ScrapingUtils.get_search_query_url()
+            headers = CraftScrapingUtils.prepare_search_query_headers()
+            payload = CraftScrapingUtils.prepare_search_query_payload(query)
+            url = CraftScrapingUtils.get_search_query_url()
             proxy: Optional[str] = config.proxy if config else None
             response = requests.request(
                 "POST",

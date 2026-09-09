@@ -10,7 +10,25 @@ logger = get_logger(__name__)
 
 
 class CraftSearchParser(SearchResponseParser):
+    """Parse Craft's ``UniversalSearch`` GraphQL payload into suggestions."""
+
     def parse(self, data) -> List[ISearchResponse]:
+        """Convert the ``universalSearch`` suggestion list to ISearchResponse entries.
+
+        Builds each canonical URL from the hit's ``slug`` and tolerates
+        missing logos.
+
+        Args:
+            data: Raw GraphQL response body as text.
+
+        Returns:
+            One :class:`ISearchResponse` per suggestion.
+
+        Raises:
+            ValueError: On non-object JSON, API-level ``errors``, or a
+                malformed ``universalSearch`` value.
+            Exception: JSON decode failures (after logging).
+        """
         try:
             dict_data = json.loads(data)
             if not isinstance(dict_data, dict):
@@ -27,6 +45,8 @@ class CraftSearchParser(SearchResponseParser):
             search_responses: List[ISearchResponse] = []
             for search_data in company_data:
                 company_search_data = search_data.get("company", {})
+                if not company_search_data:
+                    continue
                 company_name = company_search_data.get("displayName")
                 slug = company_search_data.get("slug")
                 source_url = UriUtils.build_craft_source_page_url(slug)

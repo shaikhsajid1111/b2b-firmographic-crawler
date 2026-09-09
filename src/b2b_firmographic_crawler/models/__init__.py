@@ -1,3 +1,5 @@
+"""Convenience re-exports of CompanyData and all nested models/enums."""
+
 from .company_data import (
     CompanyData,
     CompanyEmployeeCount,
@@ -11,6 +13,7 @@ from .company_data import (
     OtherSocialMedia,
     SimilarCompany,
 )
+from .ticker_resolution import TickerResolution
 
 __all__ = [
     "CompanyData",
@@ -24,4 +27,5 @@ __all__ = [
     "KeyExecutive",
     "OtherSocialMedia",
     "SimilarCompany",
+    "TickerResolution",
 ]

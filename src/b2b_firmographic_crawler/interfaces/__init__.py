@@ -1,3 +1,5 @@
+"""Convenience re-exports of the config/query/response models."""
+
 from b2b_firmographic_crawler.interfaces.iconfig import (
     ICrawlerConfig,
     IQuery,

@@ -9,7 +9,21 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class DiskCache(PersistentCache[T]):
+    """diskcache-backed implementation of :class:`PersistentCache`.
+
+    Single models serialize via ``model_dump(mode="json")`` (lists stay
+    lists), so entries are plain JSON round-trippable back through
+    ``model_validate``. Empty/``None`` payloads are silently skipped on
+    :meth:`set`; wrong model types raise :class:`TypeError`.
+    """
+
     def __init__(self, model_class: Type[T], base_dir: str) -> None:
+        """Open (creating if needed) the ``<base_dir>/<ModelName>`` cache folder.
+
+        Args:
+            model_class: Model type stored in this namespace.
+            base_dir: Parent directory for the model folder.
+        """
         super().__init__(model_class, base_dir)
         self._cache = diskcache.Cache(self.folder_path)
 
@@ -19,6 +33,18 @@ class DiskCache(PersistentCache[T]):
         data: Union[T, List[T]],
         expiry_time: float,
     ) -> None:
+        """Validate, serialize and persist ``data`` under ``key``.
+
+        Args:
+            key: Page URL (company cache) or raw query (search cache).
+            data: Model instance or list thereof; ``None``/``[]`` are
+                ignored.
+            expiry_time: Absolute POSIX timestamp forwarded to diskcache
+                as the entry's expiry.
+
+        Raises:
+            TypeError: If any item is not an instance of the bound model.
+        """
         # 1. Early exit if data is empty, None, or an empty list safely
         if data is None or (isinstance(data, list) and not data):
             return
@@ -44,6 +70,15 @@ class DiskCache(PersistentCache[T]):
         self._cache.set(key, serialized_data, expire=expiry_time)
 
     def get(self, key: str) -> Optional[Union[T, List[T]]]:
+        """Fetch and re-validate the entry for ``key``.
+
+        Args:
+            key: The lookup key used at :meth:`set` time.
+
+        Returns:
+            A model instance, a list of them (when a list was stored),
+            or ``None`` on miss/expiry.
+        """
         raw_data = self._cache.get(key)
         if raw_data is None:
             return None

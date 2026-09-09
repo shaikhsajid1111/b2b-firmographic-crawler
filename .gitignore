@@ -1,3 +1,7 @@
+# Reference/source repos kept locally (not part of this package)
+company-crawler/
+company-common/
+
 # Byte-compiled / cache
 __pycache__/
 *.py[cod]
@@ -26,11 +30,21 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Local notes — never published
+SETUP_ENVIRONMENT.md
+
+# Local secrets — NEVER commit these
+token
+*.token
+secrets*
+
 # Environment variables
 .env
 .env.*
 
 # Editors / OS
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 .DS_Store

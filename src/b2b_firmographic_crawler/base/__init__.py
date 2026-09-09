@@ -1,3 +1,5 @@
+"""Convenience re-exports of every abstract contract (scraper, parser, searcher, storage, cache, exporter)."""
+
 from b2b_firmographic_crawler.base.data_exporter import DataExporter
 from b2b_firmographic_crawler.base.parser import Parser
 from b2b_firmographic_crawler.base.persistent_cache import PersistentCache

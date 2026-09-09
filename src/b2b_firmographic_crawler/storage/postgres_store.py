@@ -81,6 +81,14 @@ class PostgreSQLStorage(DataStorage):
     """
 
     def __init__(self, config: IDatabaseConfig) -> None:
+        """Store the DB config; no connection is opened yet.
+
+        Args:
+            config: Supplies the DSN plus ``extra_options`` — a custom
+                table name via ``table`` and libpq keywords (only
+                allow-listed ones in ``_VALID_CONNINFO_PARAMS`` reach
+                psycopg).
+        """
         self.config = config
 
     def connect(self) -> None:
@@ -117,6 +125,7 @@ class PostgreSQLStorage(DataStorage):
         )
 
     def close(self) -> None:
+        """Close the PostgreSQL connection."""
         self.pg_connection.close()
 
     def _dsn(self) -> str:
@@ -124,6 +133,11 @@ class PostgreSQLStorage(DataStorage):
         return _DSN_SCHEME_RE.sub("postgresql://", self.config.dsn)
 
     def _connection_options(self) -> Dict[str, Any]:
+        """Filter ``extra_options`` down to valid libpq keywords.
+
+        Mongo-specific keys (e.g. ``retryWrites``) are dropped so a
+        shared config object cannot break ``psycopg.connect``.
+        """
         return {
             key: value
             for key, value in self.config.extra_options.items()
@@ -131,19 +145,24 @@ class PostgreSQLStorage(DataStorage):
         }
 
     def _ensure_company_data_table(self) -> None:
+        """Create ``(company_domain TEXT PRIMARY KEY, data JSONB)`` if missing.
+
+        Raises:
+            ValueError: If the configured table name is not a safe SQL
+                identifier.
+        """
         table = self.company_data_table
         if not _IDENTIFIER_RE.match(table):
             raise ValueError(f"Invalid table name: {table!r}")
-        self.pg_connection.execute(
-            f"""
+        self.pg_connection.execute(f"""
             CREATE TABLE IF NOT EXISTS {table} (
                 company_domain TEXT PRIMARY KEY,
                 data JSONB NOT NULL
             )
-            """
-        )
+            """)
 
     def _upsert_sql(self) -> str:
+        """Return the ``INSERT ... ON CONFLICT DO UPDATE ... RETURNING (xmax = 0)`` statement used to distinguish fresh inserts from updates of an existing domain row."""
         return f"""
             INSERT INTO {self.company_data_table} (company_domain, data)
             VALUES (%s, %s)

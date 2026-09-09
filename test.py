@@ -18,15 +18,28 @@ from b2b_firmographic_crawler import (
     B2BFirmographicCrawler,
     CompanyData,
     ICrawlerConfig,
+    IQuery,
     ISearchResponse,
     SourceProvider,
     SourceRegistry,
     register_source,
 )
+from b2b_firmographic_crawler.base.searcher import CompanySearcher
+from b2b_firmographic_crawler.orchestrators.search_orchestrator import (
+    CompanySearchingService,
+)
 from b2b_firmographic_crawler.base.scraper import CompanyNameScraper, UrlScraper
-from b2b_firmographic_crawler.parsers.company_page_parser import CraftParser
-from b2b_firmographic_crawler.parsers.search_result_parser import CraftSearchParser
-from b2b_firmographic_crawler.sources.craft_source import CraftSource
+from b2b_firmographic_crawler.sources.craft.parsers.company_page_parser import (
+    CraftParser,
+)
+from b2b_firmographic_crawler.sources.craft.parsers.search_result_parser import (
+    CraftSearchParser,
+)
+from b2b_firmographic_crawler.sources.craft.provider import CraftSource
+from b2b_firmographic_crawler.models.ticker_resolution import TickerResolution
+from b2b_firmographic_crawler.searchers.yahoo_finance_ticker_resolver import (
+    YahooFinanceTickerResolver,
+)
 from b2b_firmographic_crawler.storage.persistent_disk_cache import DiskCache
 
 # --------------------------------------------------------------------------
@@ -88,7 +101,10 @@ CRAFT_COMPANY_CACHE = json.dumps(
         },
         "fund1": {"value": 12000000, "currencySymbol": "$"},
         "kex1": {"name": "Jane Doe", "title": "CEO"},
-        "Company:999": {"displayName": "RivalCo", "tags": [{"id": "tag1", "typename": "Tag"}]},
+        "Company:999": {
+            "displayName": "RivalCo",
+            "tags": [{"id": "tag1", "typename": "Tag"}],
+        },
         "inc1": {"revenue": 500.5, "currencyIsoCode": "USD", "period": {"id": "p1"}},
         "p1": {"displayEndDate": "2023-12-31", "periodType": "FY"},
         "om1": {
@@ -127,8 +143,6 @@ class FakeCraftUrlScraper(UrlScraper):
         return CRAFT_COMPANY_CACHE
 
 
-
-
 # --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
@@ -139,7 +153,9 @@ def test_company_data_defaults():
     a = CompanyData(company_name="A")
     time.sleep(0.01)
     b = CompanyData(company_name="B")
-    assert a.last_scraped_at != b.last_scraped_at, "last_scraped_at must be per-instance"
+    assert (
+        a.last_scraped_at != b.last_scraped_at
+    ), "last_scraped_at must be per-instance"
     assert a.company_status.status.value == "unknown"
     assert a.company_founded_year is None
     assert a.company_industries == []
@@ -163,7 +179,9 @@ def test_craft_parser_parses_full_payload():
     assert company.similar_companies[0].company_name == "RivalCo"
     assert company.company_income_statements[0].revenue == 500.5
     assert company.company_operating_metrics[0].metric_value == 99.5
-    assert company.company_status.status.value == "unknown"  # "Operating" has no keyword match
+    assert (
+        company.company_status.status.value == "unknown"
+    )  # "Operating" has no keyword match
 
 
 def test_disk_cache_round_trip():
@@ -223,7 +241,6 @@ def test_craft_scrape_flow_with_fake_scraper():
             "https://craft.co/stripe", ICrawlerConfig(force_rescrape=True)
         )
         assert fake.calls == ["https://craft.co/stripe"] * 2
-
 
 
 def test_registry_rejects_unknown_source():
@@ -296,6 +313,187 @@ def test_facade_provider_caching_and_case_insensitivity():
     assert crawler._get_provider("CRAFT") is provider  # normalized
 
 
+def test_search_cache_namespaced_per_source():
+    """Same query + shared cache dir must never leak between sources.
+
+    Regression test: the search cache used to key entries by the raw query
+    string alone, so a second source (owler) served the first source's
+    (craft) cached suggestions for the identical query. Keys are now
+    namespaced as "<source_name>:<query>".
+    """
+
+    class FakeSearcher(CompanySearcher):
+        """Canned CompanySearcher returning one fixed suggestion."""
+
+        def __init__(self, company_name: str, source_url: str) -> None:
+            self.company_name = company_name
+            self.source_url = source_url
+            self.calls = []
+
+        def search_by_name(self, name, config=None):
+            self.calls.append(name)
+            return [
+                ISearchResponse(
+                    company_name=self.company_name,
+                    source_url=self.source_url,
+                    slug=name.lower(),
+                )
+            ]
+
+        def search_by_symbol(self, symbol, config=None):
+            raise NotImplementedError
+
+    craft_searcher = FakeSearcher("Apple (Craft)", "https://craft.co/apple")
+    owler_searcher = FakeSearcher(
+        "Apple (Owler)", "https://www.owler.com/company/apple"
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        craft_service = CompanySearchingService(
+            searcher=craft_searcher, source_name="craft", cache_dir=tmp
+        )
+        owler_service = CompanySearchingService(
+            searcher=owler_searcher, source_name="owler", cache_dir=tmp
+        )
+
+        config = ICrawlerConfig()
+
+        # First call per source: each serves its own fresh results.
+        craft_first = craft_service.search_company(IQuery(company_name="apple"), config)
+        owler_first = owler_service.search_company(IQuery(company_name="apple"), config)
+        assert craft_first[0].source_url == "https://craft.co/apple"
+        assert owler_first[0].source_url == "https://www.owler.com/company/apple"
+
+        # Each searcher was hit exactly once — owler did NOT get craft's
+        # cached entry for the identical query.
+        assert craft_searcher.calls == ["apple"]
+        assert owler_searcher.calls == ["apple"]
+
+        # Second call per source: cache hits, still per source.
+        craft_cached = craft_service.search_company(
+            IQuery(company_name="apple"), config
+        )
+        owler_cached = owler_service.search_company(
+            IQuery(company_name="apple"), config
+        )
+        assert craft_cached[0].source_url == "https://craft.co/apple"
+        assert owler_cached[0].source_url == "https://www.owler.com/company/apple"
+        assert craft_searcher.calls == ["apple"]  # no extra network calls
+        assert owler_searcher.calls == ["apple"]
+
+        # The raw query alone is no longer a valid cache key; entries live
+        # only under the "<source>:<query>" namespace.
+        shared_cache = DiskCache(ISearchResponse, tmp)
+        assert shared_cache.get("apple") is None
+        assert shared_cache.get("craft:apple") is not None
+        assert shared_cache.get("owler:apple") is not None
+
+
+def test_facade_symbol_search_delegates_to_provider():
+    """search_company_by_symbol resolves the ticker, then runs the name search.
+
+    The Yahoo resolver is replaced with a fake, so the test stays offline and
+    only proves the facade -> SourceProvider.search_company_by_symbol wiring.
+    """
+    import b2b_firmographic_crawler.sources.base as base_module
+
+    if "symbol_mock" not in SourceRegistry.available_sources():
+
+        @register_source("symbol_mock")
+        class SymbolMockSource(SourceProvider):
+            """Records the query it receives; returns canned Craft results."""
+
+            def __init__(self, cache_dir=None, **kwargs) -> None:
+                self.seen_queries = []
+
+            def search_company(self, query, config=None):
+                self.seen_queries.append(query)
+                return CraftSearchParser().parse(CRAFT_SEARCH_RESPONSE)
+
+            def get_company_data(self, url, config=None):
+                return CraftParser().parse(CRAFT_COMPANY_CACHE)
+
+    class FakeTickerResolver:
+        def __init__(self, cache_dir=None):
+            self.cache_dir = cache_dir
+
+        def resolve(self, symbol, config=None):
+            assert symbol.strip().upper() == "MSFT"
+            return "Microsoft"
+
+    original_resolver = base_module.YahooFinanceTickerResolver
+    base_module.YahooFinanceTickerResolver = FakeTickerResolver
+    try:
+        crawler = B2BFirmographicCrawler(cache_dir=tempfile.mkdtemp())
+
+        results = crawler.search_company_by_symbol("msft", source="symbol_mock")
+        assert results[0].company_name == "Stripe"
+
+        provider = crawler._get_provider("symbol_mock")
+        assert provider.seen_queries == ["Microsoft"]
+
+        company = crawler.get_company_data_by_symbol("MSFT", source="symbol_mock")
+        assert company is not None
+        assert company.company_name == "TestCo"
+
+        # An empty ticker is rejected before any resolution/network work.
+        try:
+            crawler.search_company_by_symbol("   ", source="symbol_mock")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("empty ticker must raise ValueError")
+    finally:
+        base_module.YahooFinanceTickerResolver = original_resolver
+
+
+def test_ticker_resolver_persistent_cache():
+    """Yahoo ticker resolutions persist on disk across resolver instances."""
+    with tempfile.TemporaryDirectory() as tmp:
+        resolver = YahooFinanceTickerResolver(cache_dir=tmp)
+        calls = []
+
+        def fake_fetch(symbol, config=None):
+            calls.append(symbol)
+            return "Microsoft Corporation"
+
+        resolver._fetch_company_name = fake_fetch
+
+        # First call hits the (faked) network and caches the resolution.
+        assert resolver.resolve("msft") == "Microsoft Corporation"
+        assert calls == ["MSFT"]
+
+        # Second call on the same instance is served from the disk cache.
+        assert resolver.resolve("MSFT") == "Microsoft Corporation"
+        assert calls == ["MSFT"]
+
+        # A brand-new resolver sharing cache_dir also hits the cache.
+        second = YahooFinanceTickerResolver(cache_dir=tmp)
+        second._fetch_company_name = fake_fetch
+        assert second.resolve(" MSFT ") == "Microsoft Corporation"
+        assert calls == ["MSFT"]
+
+        # The persisted record round-trips as a TickerResolution.
+        entry = DiskCache(TickerResolution, tmp).get("MSFT")
+        assert entry.ticker == "MSFT"
+        assert entry.company_name == "Microsoft Corporation"
+
+        # force_rescrape bypasses the cache and refreshes the entry.
+        assert (
+            resolver.resolve("msft", ICrawlerConfig(force_rescrape=True))
+            == "Microsoft Corporation"
+        )
+        assert calls == ["MSFT", "MSFT"]
+
+        # Empty tickers are rejected before any network/cache work.
+        try:
+            resolver.resolve("   ")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("empty ticker must raise ValueError")
+
+
 def main() -> None:
     tests = [
         test_company_data_defaults,
@@ -306,6 +504,9 @@ def main() -> None:
         test_registry_rejects_unknown_source,
         test_custom_source_string_dispatch,
         test_facade_provider_caching_and_case_insensitivity,
+        test_facade_symbol_search_delegates_to_provider,
+        test_ticker_resolver_persistent_cache,
+        test_search_cache_namespaced_per_source,
     ]
 
     failures = 0

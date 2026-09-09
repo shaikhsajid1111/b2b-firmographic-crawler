@@ -8,19 +8,25 @@ from curl_cffi import requests
 from b2b_firmographic_crawler.base.scraper import UrlScraper
 from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig
 from b2b_firmographic_crawler.logger import get_logger
-from b2b_firmographic_crawler.utils.scraping_utils import ScrapingUtils
+from b2b_firmographic_crawler.sources.craft.utils import CraftScrapingUtils
 
 logger = get_logger(__name__)
 
 
-class HTTPUrlScraper(UrlScraper):
+class CraftHttpUrlScraper(UrlScraper):
+    """HTTP URL scraper for Craft.co pages.
+
+    Extracts window.App.cache data from JSON assigned in script tags.
+    """
 
     def build_proxies(self, proxy: Optional[str]) -> Any:
+        """Map proxy config to curl-cffi's ``{"http": ..., "https": ...}`` form, or ``None`` when unset."""
         if not proxy:
             return None
         return {"http": f"http://{proxy}", "https": f"http://{proxy}"}
 
     def _build_soup(self, html_markup: str) -> BeautifulSoup:
+        """Parse raw HTML into BeautifulSoup (html.parser backend)."""
         return BeautifulSoup(html_markup, "html.parser")
 
     def _extract_cache_from_scripts(self, soup: BeautifulSoup) -> Optional[Dict]:
@@ -46,7 +52,7 @@ class HTTPUrlScraper(UrlScraper):
 
                 try:
                     json_source = re.sub(
-                        r"(?<=:)\s*undefined\b", "null", script_content[match.end():]
+                        r"(?<=:)\s*undefined\b", "null", script_content[match.end() :]
                     )
                     value, _ = json.JSONDecoder().raw_decode(json_source)
                 except json.JSONDecodeError as ex:
@@ -61,9 +67,27 @@ class HTTPUrlScraper(UrlScraper):
         return None
 
     def scrape(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Fetch a Craft page over HTTP and return its embedded cache as JSON.
+
+        Uses Chrome impersonation plus ``config`` proxy/timeout, then
+        extracts ``window.App.cache`` from script tags. Raises when the
+        payload is absent (typically JS-rendered content) so the
+        :class:`CraftUrlScraperChain` can fall through to Selenium.
+
+        Args:
+            url: Craft company page URL.
+            config: Proxy/timeout settings.
+
+        Returns:
+            The embedded cache serialized as a JSON string.
+
+        Raises:
+            ValueError: When no ``window.App.cache`` is found.
+            Exception: Transport failures (after logging).
+        """
         try:
             logger.info("Starting HTTP crawl: %s", url)
-            headers = ScrapingUtils.prepare_search_query_headers()
+            headers = CraftScrapingUtils.prepare_search_query_headers()
             proxy: Optional[str] = config.proxy if config else None
             proxies = self.build_proxies(proxy) if config else None
             response = requests.request(

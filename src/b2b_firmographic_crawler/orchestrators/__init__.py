@@ -1,8 +1,13 @@
+"""Convenience re-exports of the source-agnostic search/scraping services."""
+
 from b2b_firmographic_crawler.orchestrators.scraping_orchestrator import (
-    CraftCompanyPageScrapingService,
+    CompanyPageScrapingService,
 )
 from b2b_firmographic_crawler.orchestrators.search_orchestrator import (
-    CraftCompanySearchingService,
+    CompanySearchingService,
 )
 
-__all__ = ["CraftCompanyPageScrapingService", "CraftCompanySearchingService"]
+__all__ = [
+    "CompanyPageScrapingService",
+    "CompanySearchingService",
+]
