@@ -13,6 +13,7 @@ from .company_data import (
     OtherSocialMedia,
     SimilarCompany,
 )
+from .ticker_resolution import TickerResolution
 
 __all__ = [
     "CompanyData",
@@ -26,4 +27,5 @@ __all__ = [
     "KeyExecutive",
     "OtherSocialMedia",
     "SimilarCompany",
+    "TickerResolution",
 ]

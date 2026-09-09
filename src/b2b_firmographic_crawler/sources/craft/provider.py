@@ -69,6 +69,7 @@ class CraftSource(SourceProvider):
                 default page chain.
             page_parser: Custom :class:`Parser` replacing the default.
         """
+        self.cache_dir = cache_dir
         if searcher is not None and not isinstance(searcher, CompanySearcher):
             # Accept a raw CompanyNameScraper too, and wrap it with Craft's
             # search-response parser for convenience.
@@ -81,6 +82,7 @@ class CraftSource(SourceProvider):
                 ),
                 CraftSearchParser(),
             ),
+            source_name=self.source_name,
             cache_dir=cache_dir,
         )
         self.scraping_service = CompanyPageScrapingService(

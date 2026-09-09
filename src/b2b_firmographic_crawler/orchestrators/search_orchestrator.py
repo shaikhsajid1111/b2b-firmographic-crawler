@@ -21,16 +21,22 @@ class CompanySearchingService:
     def __init__(
         self,
         searcher: CompanySearcher,
+        source_name: str,
         cache_dir: Optional[str] = None,
     ):
         """Wire a source's searcher to an ISearchResponse cache.
 
         Args:
             searcher: Source-specific company lookup.
+            source_name: Cache-key namespace, e.g. ``"craft"``. Search
+                results are stored under ``"<source_name>:<company_name>"``
+                so identical queries issued to different sources never
+                share (and cross-serve) cache entries.
             cache_dir: Base dir for the ``ISearchResponse`` disk cache;
                 defaults to the current working directory.
         """
         self.searcher = searcher
+        self.source_name = (source_name or "").strip().lower() or "unknown"
         self._disk_cache = DiskCache(
             ISearchResponse, cache_dir or os.getcwd()
         )  # intentionally kept away from user control
@@ -42,8 +48,8 @@ class CompanySearchingService:
 
         Only ``query.company_name`` is honored today — a query without
         it yields ``[]`` (stock-ticker search is not implemented by any
-        source yet). Fresh searches are cached under the raw
-        company-name string with a TTL from
+        source yet). Fresh searches are cached under the source-namespaced
+        key ``"<source_name>:<company_name>"`` with a TTL from
         ``search_cache_expiry_time_days``; ``force_rescrape`` bypasses
         the cache.
 
@@ -62,9 +68,12 @@ class CompanySearchingService:
 
         try:
             if query.company_name:
+                # Namespaced per source so two sources queried with the
+                # same company name never serve each other's results.
+                cache_key = f"{self.source_name}:{query.company_name}"
                 if not crawler_config.force_rescrape:
                     result = self._disk_cache.get(
-                        query.company_name,
+                        cache_key,
                     )
                     if result:
                         return result
@@ -73,7 +82,7 @@ class CompanySearchingService:
                     query.company_name, crawler_config
                 )
                 self._disk_cache.set(
-                    query.company_name,
+                    cache_key,
                     result,
                     GeneralUtils.generate_time_from_now(
                         crawler_config.search_cache_expiry_time_days

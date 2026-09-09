@@ -15,7 +15,6 @@ from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig, IQuery
 from b2b_firmographic_crawler.interfaces.search_response import ISearchResponse
 from b2b_firmographic_crawler.models.company_data import CompanyData
 from b2b_firmographic_crawler.sources.base import SourceProvider
-from b2b_firmographic_crawler.sources.craft.provider import CraftSource
 from b2b_firmographic_crawler.sources.registry import SourceRegistry
 
 __version__ = "2.0.0"
@@ -63,6 +62,9 @@ class B2BFirmographicCrawler:
 
         results = crawler.search_company("stripe", source="craft")
         data = crawler.get_company_data(results[0].source_url, source="craft")
+
+    Stock tickers can be resolved to companies with
+    :meth:`search_company_by_symbol` / :meth:`get_company_data_by_symbol`.
 
     New sources (owler, crunchbase, ...) are added by subclassing
     :class:`SourceProvider` and registering them::
@@ -129,6 +131,39 @@ class B2BFirmographicCrawler:
         """
         return self._get_provider(source).search_company(query, config or self.config)
 
+    def search_company_by_symbol(
+        self,
+        symbol: str,
+        source: str = "craft",
+        config: Optional[ICrawlerConfig] = None,
+    ) -> List[ISearchResponse]:
+        """Search companies by stock ticker on the given source.
+
+        The ticker is resolved to a company name via Yahoo Finance (see
+        ``SourceProvider.search_company_by_symbol``) and the resulting name
+        is fed through the source's regular name search.
+
+        Args:
+            symbol: Exchange ticker, e.g. ``"MSFT"`` (case-insensitive).
+            source: Registered source key (``"craft"``, ``"owler"``, ...).
+                Case-insensitive.
+            config: Per-call crawl settings. Falls back to the facade-level
+                config when omitted.
+
+        Returns:
+            A list of :class:`ISearchResponse` suggestions for the resolved
+            company name. Empty when nothing matched.
+
+        Raises:
+            ValueError: If ``source`` is not registered, or the ticker symbol
+                is empty or cannot be resolved.
+        """
+        if not symbol or not symbol.strip():
+            raise ValueError("Ticker symbol must not be empty.")
+        return self._get_provider(source).search_company_by_symbol(
+            symbol, config or self.config
+        )
+
     def get_company_data(
         self,
         url: str,
@@ -152,6 +187,38 @@ class B2BFirmographicCrawler:
             ValueError: If ``source`` is not registered.
         """
         return self._get_provider(source).get_company_data(url, config or self.config)
+
+    def get_company_data_by_symbol(
+        self,
+        symbol: str,
+        source: str = "craft",
+        config: Optional[ICrawlerConfig] = None,
+    ) -> Optional[CompanyData]:
+        """Resolve a ticker to a company name, then scrape the first search hit.
+
+        Convenience wrapper combining :meth:`search_company_by_symbol` and
+        :meth:`get_company_data`. Only the top-ranked search hit is scraped;
+        use the two calls separately when you need to choose among hits.
+
+        Args:
+            symbol: Exchange ticker, e.g. ``"MSFT"``.
+            source: Registered source key.
+            config: Per-call crawl settings. Falls back to the facade-level
+                config when omitted.
+
+        Returns:
+            The parsed :class:`CompanyData` for the first hit, or ``None``
+            when the ticker could not be resolved, search returned nothing,
+            or the page could not be parsed.
+
+        Raises:
+            ValueError: If ``source`` is not registered, or the ticker symbol
+                is empty or cannot be resolved.
+        """
+        results = self.search_company_by_symbol(symbol, source, config)
+        if not results:
+            return None
+        return self.get_company_data(results[0].source_url, source, config)
 
     def get_company_data_by_name(
         self,

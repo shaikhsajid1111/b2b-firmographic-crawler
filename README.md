@@ -21,6 +21,7 @@ b2b-firmographic-crawler searches for companies on supported data sources (Craft
 
 - **Source-agnostic API** — choose a data source with a plain string: `source="craft"`
 - **Typed & validated output** — every record is a [Pydantic](https://docs.pydantic.dev/) `CompanyData` model
+- **Ticker-aware search** — resolve `MSFT` to Microsoft via Yahoo Finance, then search any source
 - **Resilient scraping** — HTTP-first (`curl-cffi` browser impersonation) with an automatic SeleniumBase/UC browser fallback chain
 - **Persistent caching** — resumable runs with configurable TTLs, per record type
 - **Pluggable storage** — MongoDB and PostgreSQL stores included
@@ -134,6 +135,28 @@ the page could not be parsed.
 company = crawler.get_company_data_by_name("airbnb", source="craft")
 ```
 
+### Searching by stock symbol
+
+`search_company_by_symbol()` first resolves the ticker to a company name via
+Yahoo Finance, then runs the source's normal name search:
+
+```python
+results = crawler.search_company_by_symbol("MSFT", source="craft")
+print(results[0].company_name)   # Microsoft
+
+# resolve + search + scrape in one call
+company = crawler.get_company_data_by_symbol("MSFT", source="craft")
+```
+
+This works with every registered source: the ticker resolution lives on the
+shared `SourceProvider` base class, so new sources get it for free.
+
+Ticker resolutions (`MSFT` -> `Microsoft Corporation`) are also **cached on
+disk** under `<cache_dir>/TickerResolution/` with the
+`search_cache_expiry_time_days` TTL, so repeated symbol lookups skip the
+Yahoo Finance round-trip. Pass `ICrawlerConfig(force_rescrape=True)` to
+refresh a stale resolution.
+
 ### Working with results
 
 `CompanyData` is a standard Pydantic model, so it composes with the rest of
@@ -227,8 +250,11 @@ IQuery(company_name="stripe")   # used internally by search_company()
 IQuery(stock_ticket="CRWD")     # at least one field must be non-empty
 ```
 
-> Stock-symbol search is accepted by the query model but not implemented in
-> any source yet (see [Roadmap](#roadmap)).
+> Stock-symbol lookups go through the dedicated crawler methods
+> `search_company_by_symbol()` / `get_company_data_by_symbol()` (see
+> [Searching by stock symbol](#searching-by-stock-symbol)). The query model's
+> `stock_ticket` field is accepted for custom integrations but is not wired
+> into the built-in search flows.
 
 ## Caching
 
@@ -237,7 +263,14 @@ Every source caches scraped pages and search results on disk
 and gentle on the target site:
 
 - Records live under `<cache_dir>/<ModelName>/` — `CompanyData/` for company
-  pages and `ISearchResponse/` for search results.
+  pages, `ISearchResponse/` for search results and `TickerResolution/` for
+  the `MSFT -> Microsoft` ticker-to-name lookups (see
+  [Searching by stock symbol](#searching-by-stock-symbol)).
+- Cache entries are **namespaced per source**: search results are stored
+  under `<source>:<query>` (e.g. `craft:apple`, `owler:apple`), so the same
+  query on different sources never serves the other's cached suggestions.
+  Company pages are keyed by their full URL, which already contains the
+  source's domain.
 - `cache_dir` defaults to the current working directory; pass
   `B2BFirmographicCrawler(cache_dir=...)` to control it.
 - Entries expire after `company_cache_expiry_time_days` /
@@ -530,6 +563,7 @@ class OwlerSource(SourceProvider):
                 OwlerCompanySearchService(),
                 OwlerSearchParser(),
             ),
+            source_name="owler",  # namespaces the search cache: <source>:<query>
             cache_dir=cache_dir,
         )
         self.scraping_service = CompanyPageScrapingService(
@@ -560,7 +594,9 @@ company = crawler.get_company_data_by_name("acme", source="owler")
 > Each source provider owns its website-specific crawlers and parsers, and plugs
 > them into these shared orchestrators. This means adding a new source only
 > requires implementing the website-specific pieces — caching, exports and
-> storage come for free.
+> storage come for free. Ticker search is free too:
+> `SourceProvider.search_company_by_symbol` resolves the symbol via Yahoo
+> Finance and reuses your `search_company()` implementation.
 
 ## Logging
 
@@ -597,7 +633,10 @@ src/b2b_firmographic_crawler/
 ├── models/                # CompanyData and nested Pydantic models
 ├── interfaces/            # ICrawlerConfig, IQuery, IDatabaseConfig, ISearchResponse
 ├── base/                  # abstract contracts (scraper, parser, searcher, storage, ...)
-├── searchers/             # search-by-name orchestration
+├── searchers/             # search orchestration
+│   ├── search_by_name.py  # name scraper + search parser -> ISearchResponse
+│   ├── search_by_symbol.py  # ticker -> company name -> name search
+│   └── yahoo_finance_ticker_resolver.py  # MSFT -> "Microsoft Corporation"
 ├── orchestrators/         # generic, source-agnostic search & scraping services
 ├── sources/               # provider registry and self-contained source packages
 │   ├── base.py            # SourceProvider abstract base class
@@ -651,8 +690,10 @@ Yes — `ICrawlerConfig(proxy="host:port")`. Both the HTTP and browser scrapers
 honour it.
 
 **Can I search by stock symbol?**
-The query model accepts `stock_ticket`, but no source implements symbol
-search yet (see [Roadmap](#roadmap)).
+Yes — `crawler.search_company_by_symbol("MSFT", source="craft")` resolves the
+ticker to a company name via Yahoo Finance, then runs the source's normal
+name search. `crawler.get_company_data_by_symbol(...)` does resolve + search +
+scrape in one call.
 
 **Is scraping legal?**
 This tool retrieves only **public, unauthenticated** pages — but you remain
@@ -665,7 +706,7 @@ only collect what you need. See
 ## Roadmap
 
 - [ ] Crunchbase source
-- [ ] Search by stock symbol
+- [x] Search by stock symbol
 - [ ] SQLite exporter
 
 ## Publishing

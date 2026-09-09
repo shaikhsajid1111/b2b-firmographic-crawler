@@ -45,6 +45,8 @@ class CraftSearchParser(SearchResponseParser):
             search_responses: List[ISearchResponse] = []
             for search_data in company_data:
                 company_search_data = search_data.get("company", {})
+                if not company_search_data:
+                    continue
                 company_name = company_search_data.get("displayName")
                 slug = company_search_data.get("slug")
                 source_url = UriUtils.build_craft_source_page_url(slug)
