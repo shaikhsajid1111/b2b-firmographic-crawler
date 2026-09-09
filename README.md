@@ -641,11 +641,9 @@ only collect what you need. See
 
 ## Roadmap
 
-- [ ] Owler source
 - [ ] Crunchbase source
 - [ ] Search by stock symbol
-- [ ] Concurrent scraping with rate limiting and retries
-- [ ] More exporters (Excel, SQLite)
+- [ ] More exporters (SQLite)
 
 ## Publishing
 

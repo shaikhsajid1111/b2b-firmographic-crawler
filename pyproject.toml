@@ -1,6 +1,6 @@
 [project]
 name = "b2b-firmographic-crawler"
-version = "1.0.0"
+version = "2.0.0"
 description = "A pluggable web crawler that extracts firmographic company data (funding, employees, locations, executives, financials) into validated Pydantic models."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,6 +49,7 @@ Issues = "https://github.com/shaikhsajid1111/b2b-firmographic-crawler/issues"
 
 [project.optional-dependencies]
 export = [
+    "openpyxl>=3.1.0",
     "pandas>=2.3.3",
     "pyarrow>=25.0.1",
 ]
