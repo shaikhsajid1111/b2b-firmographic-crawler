@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Beta-blue)](https://pypi.org/project/b2b-firmographic-crawler/)
 
-b2b-firmographic-crawler searches for companies on supported data sources (Craft.co today, Owler and Crunchbase pluggable), scrapes their public company pages, and returns the result as a fully typed, validated `CompanyData` model — funding rounds, employee counts, office locations, key executives, industries, income statements and more.
+b2b-firmographic-crawler searches for companies on supported data sources (Craft.co and Owler today, Crunchbase pluggable), scrapes their public company pages, and returns the result as a fully typed, validated `CompanyData` model — funding rounds, employee counts, office locations, key executives, industries, income statements and more.
 
 ## Disclaimer & privacy
 
@@ -24,7 +24,7 @@ b2b-firmographic-crawler searches for companies on supported data sources (Craft
 - **Resilient scraping** — HTTP-first (`curl-cffi` browser impersonation) with an automatic SeleniumBase/UC browser fallback chain
 - **Persistent caching** — resumable runs with configurable TTLs, per record type
 - **Pluggable storage** — MongoDB and PostgreSQL stores included
-- **Export-ready** — JSON, CSV and Parquet exporters
+- **Export-ready** — JSON, CSV, Excel and Parquet exporters
 - **Extensible by design** — register your own source with a single decorator
 
 ## Table of Contents
@@ -61,7 +61,7 @@ pip install b2b-firmographic-crawler
 uv add b2b-firmographic-crawler
 ```
 
-To also get the CSV/Parquet exporters (pandas + PyArrow):
+To also get the CSV, Excel and Parquet exporters (pandas + PyArrow + openpyxl):
 
 ```bash
 pip install "b2b-firmographic-crawler[export]"
@@ -156,11 +156,11 @@ surrounding whitespace is ignored.
 | Source | Status | Notes |
 | ------ | ------ | ----- |
 | `craft` | Implemented | craft.co company search + firmographic pages |
-| `owler` | Planned | see [Adding a new source](#adding-a-new-source) |
+| `owler` | Implemented | owler.com company search + firmographic pages |
 | `crunchbase` | Planned | see [Adding a new source](#adding-a-new-source) |
 
 ```python
-crawler.available_sources()                        # ['craft'] + anything you register
+crawler.available_sources()                        # ['craft', 'owler'] + anything you register
 crawler.search_company("stripe", source="CRAFT")   # case-insensitive
 ```
 
@@ -179,9 +179,9 @@ that bundles its own crawlers and parsers:
 All sources share the same:
 - **Output model** — every source returns the same `CompanyData` schema
 - **Orchestrators** — `CompanyPageScrapingService` and `CompanySearchingService` handle caching and coordination
-- **Storage & exports** — MongoDB/PostgreSQL stores and JSON/CSV/Parquet exporters work with any source
+- **Storage & exports** — MongoDB/PostgreSQL stores and JSON/CSV/Excel/Parquet exporters work with any source
 
-This means adding a new source (like Owler) only requires implementing the website-specific
+This means adding a new source (like Crunchbase) only requires implementing the website-specific
 crawlers and parsers — the caching, exports and storage come for free.
 
 ## Configuration
@@ -258,6 +258,7 @@ cache.clear()                                        # drop the whole model's ca
 ```python
 from b2b_firmographic_crawler.services import (
     CSVExporter,
+    ExcelExporter,
     JSONExporter,
     ParquetExporter,
 )
@@ -266,10 +267,11 @@ company = crawler.get_company_data_by_name("stripe")
 
 JSONExporter().export_data(company, filepath="stripe.json")     # no pandas needed
 CSVExporter().export_data(company, filepath="stripe.csv")       # requires [export] extra
+ExcelExporter().export_data(company, filepath="stripe.xlsx")    # requires [export] extra
 ParquetExporter().export_data(company, filepath="stripe.parquet")
 ```
 
-JSON works out of the box. CSV/Parquet flatten nested fields via
+JSON works out of the box. CSV, Excel and Parquet flatten nested fields via
 `pandas.json_normalize` and require the `[export]` extra.
 
 ## Storing data
@@ -424,28 +426,32 @@ exporters and storage for free.
 ### 1. Create the source package
 
 ```
-sources/
+src/b2b_firmographic_crawler/sources/
   owler/
-    __init__.py          # exports OwlerSource and its crawlers/parsers
-    provider.py          # OwlerSource(SourceProvider) — wires everything
+    __init__.py                  # exports OwlerSource and its crawlers/parsers
+    provider.py                  # OwlerSource(SourceProvider) — wires everything
     crawlers/
       __init__.py
-      url_scraper.py     # OwlerUrlScraper(UrlScraper)
-      search_scraper.py  # OwlerSearchScraper(CompanyNameScraper)
+      http_url_crawler.py        # OwlerHttpUrlScraper(UrlScraper) — HTTP fetch
+      selenium_base_url_crawler.py    # OwlerSeleniumUrlScraper(UrlScraper) — browser fallback
+      url_scraper_chain.py       # OwlerUrlScraperChain — HTTP → Selenium fallback
+      http_company_search_crawler.py  # OwlerCompanySearchService(CompanyNameScraper)
+      selenium_base_search_crawler.py # OwlerSeleniumSearchCrawler(CompanyNameScraper)
+      company_name_scraper_chain.py   # OwlerCompanyNameScraperChain — search fallback
     parsers/
       __init__.py
-      page_parser.py     # OwlerParser(Parser)
-      search_parser.py   # OwlerSearchParser(SearchResponseParser)
+      company_page_parser.py     # OwlerParser(Parser)
+      search_result_parser.py    # OwlerSearchParser(SearchResponseParser)
 ```
 
 Implement the low-level pieces by subclassing the base contracts:
 
 ```python
-# owler_source/crawlers/url_scraper.py
+# src/b2b_firmographic_crawler/sources/owler/crawlers/http_url_crawler.py
 from b2b_firmographic_crawler.base.scraper import UrlScraper
 
-class OwlerUrlScraper(UrlScraper):
-    """Fetches an Owler company page (HTTP first, browser fallback)."""
+class OwlerHttpUrlScraper(UrlScraper):
+    """Fetches an Owler company page over HTTP."""
 
     def build_proxies(self, proxy):
         return {"http": f"http://{proxy}", "https": f"http://{proxy}"} if proxy else None
@@ -455,7 +461,7 @@ class OwlerUrlScraper(UrlScraper):
 ```
 
 ```python
-# owler_source/parsers/page_parser.py
+# src/b2b_firmographic_crawler/sources/owler/parsers/company_page_parser.py
 from b2b_firmographic_crawler.base.parser import Parser
 from b2b_firmographic_crawler.models.company_data import CompanyData
 
@@ -467,16 +473,16 @@ class OwlerParser(Parser):
 ```
 
 ```python
-# owler_source/crawlers/search_scraper.py
+# src/b2b_firmographic_crawler/sources/owler/crawlers/http_company_search_crawler.py
 from b2b_firmographic_crawler.base.scraper import CompanyNameScraper
 
-class OwlerSearchScraper(CompanyNameScraper):
+class OwlerCompanySearchService(CompanyNameScraper):
     def scrape(self, query, config=None) -> str:
         ...  # return raw search results for a company name
 ```
 
 ```python
-# owler_source/parsers/search_parser.py
+# src/b2b_firmographic_crawler/sources/owler/parsers/search_result_parser.py
 from b2b_firmographic_crawler.base.search_parser import SearchResponseParser
 from b2b_firmographic_crawler.interfaces.search_response import ISearchResponse
 
@@ -485,10 +491,15 @@ class OwlerSearchParser(SearchResponseParser):
         ...  # -> [ISearchResponse(company_name=..., source_url=..., slug=...), ...]
 ```
 
+> **Tip:** The bundled Craft and Owler sources also show the hardened pattern —
+> each `crawlers/` folder pairs an HTTP crawler with a SeleniumBase crawler and
+> composes them into a `*ScraperChain` (HTTP first, browser fallback). Wiring a
+> single plain crawler, as above, keeps a minimal source simple.
+
 ### 2. Wire them together and register
 
 ```python
-# owler_source/provider.py
+# src/b2b_firmographic_crawler/sources/owler/provider.py
 from typing import Optional
 
 from b2b_firmographic_crawler.base.searcher import CompanySearcher
@@ -501,10 +512,10 @@ from b2b_firmographic_crawler.searchers.search_by_name import CompanySearchByNam
 from b2b_firmographic_crawler.sources.base import SourceProvider
 from b2b_firmographic_crawler.sources.registry import SourceRegistry
 
-from .crawlers.url_scraper import OwlerUrlScraper
-from .crawlers.search_scraper import OwlerSearchScraper
-from .parsers.page_parser import OwlerParser
-from .parsers.search_parser import OwlerSearchParser
+from .crawlers.http_company_search_crawler import OwlerCompanySearchService
+from .crawlers.http_url_crawler import OwlerHttpUrlScraper
+from .parsers.company_page_parser import OwlerParser
+from .parsers.search_result_parser import OwlerSearchParser
 
 
 @SourceRegistry.register("owler")
@@ -516,14 +527,14 @@ class OwlerSource(SourceProvider):
     def __init__(self, cache_dir=None, **kwargs):
         self.search_service = CompanySearchingService(
             searcher=CompanySearchByName(
-                OwlerSearchScraper(),
+                OwlerCompanySearchService(),
                 OwlerSearchParser(),
             ),
             cache_dir=cache_dir,
         )
         self.scraping_service = CompanyPageScrapingService(
             page_parser=OwlerParser(),
-            url_scraper=OwlerUrlScraper(),
+            url_scraper=OwlerHttpUrlScraper(),
             cache_dir=cache_dir,
         )
 
@@ -538,7 +549,7 @@ class OwlerSource(SourceProvider):
 
 ```python
 from b2b_firmographic_crawler import B2BFirmographicCrawler
-import owler_source  # noqa: F401 — registers the source on import
+import b2b_firmographic_crawler.sources.owler  # noqa: F401 — registers the source on import
 
 crawler = B2BFirmographicCrawler()
 company = crawler.get_company_data_by_name("acme", source="owler")
@@ -586,27 +597,39 @@ src/b2b_firmographic_crawler/
 ├── models/                # CompanyData and nested Pydantic models
 ├── interfaces/            # ICrawlerConfig, IQuery, IDatabaseConfig, ISearchResponse
 ├── base/                  # abstract contracts (scraper, parser, searcher, storage, ...)
-├── crawlers/              # backward-compatible re-exports for Craft crawlers
-├── parsers/               # backward-compatible re-exports for Craft parsers
 ├── searchers/             # search-by-name orchestration
 ├── orchestrators/         # generic, source-agnostic search & scraping services
 ├── sources/               # provider registry and self-contained source packages
 │   ├── base.py            # SourceProvider abstract base class
 │   ├── registry.py        # SourceRegistry — string-keyed source registration
-│   └── craft/             # Craft.co source package
-│       ├── provider.py    # CraftSource — wires crawlers/parsers into orchestrators
-│       ├── crawlers/      # Craft-specific URL and search crawlers
-│       │   ├── http_url_crawler.py       # HTTP scraper (window.App.cache)
-│       │   ├── selenium_url_crawler.py   # Selenium browser scraper
-│       │   ├── url_scraper_chain.py      # HTTP → Selenium fallback chain
-│       │   ├── http_company_search_crawler.py  # HTTP search-by-name
+│   ├── craft/             # Craft.co source package
+│   │   ├── provider.py    # CraftSource — wires crawlers/parsers into orchestrators
+│   │   ├── utils.py       # Craft-specific helpers
+│   │   ├── crawlers/      # HTTP + Selenium crawlers and fallback chains
+│   │   │   ├── http_url_crawler.py            # HTTP scraper (window.App.cache)
+│   │   │   ├── selenium_base_url_crawler.py   # Selenium browser scraper
+│   │   │   ├── url_scraper_chain.py           # HTTP → Selenium fallback chain
+│   │   │   ├── http_company_search_crawler.py # HTTP search-by-name
+│   │   │   ├── selenium_base_search_crawler.py # Selenium search-by-name
+│   │   │   └── company_name_scraper_chain.py  # search fallback chain
+│   │   └── parsers/       # Craft page + search parsers
+│   │       ├── company_page_parser.py  # raw page → CompanyData
+│   │       └── search_result_parser.py # raw search → ISearchResponse list
+│   └── owler/             # Owler.com source package
+│       ├── provider.py    # OwlerSource — wires crawlers/parsers into orchestrators
+│       ├── utils.py       # Owler-specific helpers (search URLs, headers)
+│       ├── crawlers/      # HTTP + Selenium crawlers and fallback chains
+│       │   ├── http_url_crawler.py            # HTTP scraper (__NEXT_DATA__)
+│       │   ├── selenium_base_url_crawler.py   # Selenium browser scraper
+│       │   ├── url_scraper_chain.py           # HTTP → Selenium fallback chain
+│       │   ├── http_company_search_crawler.py # HTTP search-by-name
 │       │   ├── selenium_base_search_crawler.py # Selenium search-by-name
-│       │   └── company_name_scraper_chain.py   # search fallback chain
-│       └── parsers/       # Craft-specific page and search parsers
-│           ├── company_page_parser.py    # raw page → CompanyData
-│           └── search_result_parser.py   # raw search → ISearchResponse list
+│       │   └── company_name_scraper_chain.py  # search fallback chain
+│       └── parser/        # Owler page + search parsers
+│           ├── company_page_parser.py  # raw page → CompanyData
+│           └── search_result_parser.py # raw search → ISearchResponse list
 ├── storage/               # DiskCache, MongoDBStorage, PostgreSQLStorage
-├── services/              # JSON / CSV / Parquet exporters
+├── services/              # JSON / CSV / Excel / Parquet exporters
 ├── utils/                 # scraping + general helpers
 ├── global_utils/          # URI & currency helpers
 └── logger.py              # logging setup
@@ -615,9 +638,9 @@ src/b2b_firmographic_crawler/
 ## FAQ
 
 **Why is the first scrape slower?**
-Craft serves much of its data client-side. The HTTP scraper tries first; if
-the payload is not present in the HTML it raises and the SeleniumBase browser
-fallback takes over automatically (downloading Chrome on first use).
+Both sources serve much of their data client-side. The HTTP scraper tries
+first; if the payload is not present in the HTML it raises and the SeleniumBase
+browser fallback takes over automatically (downloading Chrome on first use).
 
 **Where is my cache? How do I reset it?**
 Under `cache_dir` (the current directory by default): `CompanyData/` and
@@ -643,7 +666,7 @@ only collect what you need. See
 
 - [ ] Crunchbase source
 - [ ] Search by stock symbol
-- [ ] More exporters (SQLite)
+- [ ] SQLite exporter
 
 ## Publishing
 
