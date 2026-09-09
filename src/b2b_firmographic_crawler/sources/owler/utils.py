@@ -3,9 +3,11 @@ from typing import Dict
 
 
 class OwlerScrapingUtils:
+    """Owler.com request builders: search/page headers and search URL."""
 
     @staticmethod
     def prepare_search_query_headers() -> Dict[str, str]:
+        """Return browser-like headers for the ``basicSearchInternal`` API (same-origin CORS + Chrome UA)."""
         headers = {
             "accept": "*/*",
             "accept-language": "en-GB,en;q=0.9",
@@ -45,4 +47,12 @@ class OwlerScrapingUtils:
 
     @staticmethod
     def get_search_query_url(company_name: str):
+        """Build the ``basicSearchInternal`` URL for ``company_name``.
+
+        Args:
+            company_name: Raw search term interpolated as ``searchTerm``.
+
+        Returns:
+            The Owler internal search API URL.
+        """
         return f"https://www.owler.com/a/v1/pb/basicSearchInternal?searchTerm={company_name}"

@@ -11,13 +11,27 @@ logger = get_logger(__name__)
 
 
 class CraftCompanySearchCrawler(CompanyNameScraper):
+    """Name search via Craft's GraphQL ``UniversalSearch`` endpoint (HTTP POST)."""
 
     def build_proxies(self, proxy: Optional[str]) -> Optional[dict]:
+        """Map proxy config to curl-cffi's ``{"http": ..., "https": ...}`` form, or ``None`` when unset."""
         if not proxy:
             return None
         return {"http": f"http://{proxy}", "https": f"http://{proxy}"}
 
     def scrape(self, query: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """POST the ``UniversalSearch`` query and return the raw response.
+
+        Args:
+            query: Free-text company name.
+            config: Proxy/timeout settings (Chrome impersonation always on).
+
+        Returns:
+            Raw GraphQL response body as text.
+
+        Raises:
+            Exception: Transport/HTTP errors (after logging).
+        """
         try:
             headers = CraftScrapingUtils.prepare_search_query_headers()
             payload = CraftScrapingUtils.prepare_search_query_payload(query)

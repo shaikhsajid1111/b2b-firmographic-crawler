@@ -4,6 +4,13 @@ from typing import Optional, Dict, Any
 
 
 class ICrawlerConfig(BaseModel):
+    """Per-call or facade-level crawl settings.
+
+    Passed down to every scraper in the chain (HTTP timeouts/proxies
+    and Selenium UC/headless flags) and to the orchestrators for cache
+    TTLs. Values are validated: ``request_timeout`` must be positive.
+    """
+
     request_timeout: float = Field(default=30.0, gt=0)
     user_agent: str = ""
     proxy: Optional[str] = None
@@ -18,11 +25,28 @@ class ICrawlerConfig(BaseModel):
 
 
 class IQuery(BaseModel):
+    """A company search request: name and/or stock ticker.
+
+    At least one field must be non-empty (enforced by
+    :meth:`check_at_least_one`). Only ``company_name`` is honored by
+    current sources; ``stock_ticket`` is accepted for forward
+    compatibility with symbol search.
+    """
+
     company_name: str = Field(default="")
     stock_ticket: str = Field(default="")
 
     @model_validator(mode="after")
     def check_at_least_one(self):
+        """Reject queries where every field is empty.
+
+        Returns:
+            The validated model unchanged.
+
+        Raises:
+            ValueError: If both ``company_name`` and ``stock_ticket``
+                are empty/missing.
+        """
         values = [self.company_name, self.stock_ticket]
         if not any(v is not None and v != "" for v in values):
             raise ValueError("At least one field must be provided and non-empty.")
@@ -30,6 +54,14 @@ class IQuery(BaseModel):
 
 
 class IDatabaseConfig(BaseSettings):
+    """Database credentials, readable from ``DB_*`` environment variables.
+
+    ``driver``/``name``/``host``/``port``/``user``/``password`` map to
+    the connection; any extra keys (e.g. ``table="company_data"`` for
+    Postgres, ``retryWrites`` for Mongo) are kept in
+    :attr:`extra_options` for the storage backend to consume.
+    """
+
     model_config = SettingsConfigDict(
         env_prefix="DB_", extra="allow", env_nested_delimiter="__"
     )
@@ -47,7 +79,13 @@ class IDatabaseConfig(BaseSettings):
     @computed_field
     @property
     def dsn(self) -> str:
-        """Dynamically assembles an accurate DSN for both SQL and NoSQL systems."""
+        """Assemble a connection string for SQL and NoSQL drivers.
+
+        Handles ``user[:password]@`` auth, Atlas ``mongodb+srv`` URLs
+        (no explicit port), and per-driver default ports
+        (5432/3306/27017). Falls back to a host-only form for
+        path-style systems such as SQLite.
+        """
         # 1. Handle credentials safely
         auth = ""
         if self.user and self.password:
@@ -78,6 +116,11 @@ class IDatabaseConfig(BaseSettings):
 
     @property
     def extra_options(self) -> Dict[str, Any]:
-        """Safely extract all loose, unmapped configuration settings."""
+        """Safely extract all loose, unmapped configuration settings.
+
+        Returns:
+            Every extra key passed to the config (e.g. a Postgres
+            ``table`` name or Mongo driver options) as a plain dict.
+        """
         all_extras = self.__pydantic_extra__ or {}
         return all_extras

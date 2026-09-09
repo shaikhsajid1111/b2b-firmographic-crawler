@@ -1,3 +1,5 @@
+"""Owler.com source package: crawlers, parser, provider."""
+
 from b2b_firmographic_crawler.sources.owler.crawlers.company_name_scraper_chain import (
     OwlerCompanyNameScraperChain,
 )

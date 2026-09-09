@@ -52,6 +52,23 @@ class OwlerSource(SourceProvider):
         url_scraper=None,
         page_parser=None,
     ) -> None:
+        """Build search + scraping services with HTTP → Selenium fallbacks.
+
+        Defaults wire Owler's search chain (HTTP crawler, then Selenium)
+        with its search-response parser, and the page chain (HTTP
+        scraper, then Selenium) with its page parser. The ``searcher`` /
+        ``url_scraper`` / ``page_parser`` overrides are
+        dependency-injection seams for tests and power users: a raw
+        scraper is auto-wrapped with this source's response parser.
+
+        Args:
+            cache_dir: Base dir for this source's disk caches.
+            searcher: Custom :class:`CompanySearcher` (or bare
+                :class:`CompanyNameScraper`) replacing the default chain.
+            url_scraper: Custom :class:`UrlScraper` replacing the
+                default page chain.
+            page_parser: Custom :class:`Parser` replacing the default.
+        """
         if searcher is not None and not isinstance(searcher, CompanySearcher):
             # Accept a raw CompanyNameScraper too, and wrap it with Owler's
             # search-response parser for convenience.
@@ -69,9 +86,7 @@ class OwlerSource(SourceProvider):
         self.scraping_service = CompanyPageScrapingService(
             page_parser=page_parser or OwlerParser(),
             url_scraper=url_scraper
-            or OwlerUrlScraperChain(
-                (OwlerHttpUrlScraper(), OwlerSeleniumUrlScraper())
-            ),
+            or OwlerUrlScraperChain((OwlerHttpUrlScraper(), OwlerSeleniumUrlScraper())),
             cache_dir=cache_dir,
         )
 
@@ -80,6 +95,16 @@ class OwlerSource(SourceProvider):
         query: str,
         config: Optional[ICrawlerConfig] = None,
     ) -> List[ISearchResponse]:
+        """Search companies by name on owler.com (cached).
+
+        Args:
+            query: Free-text company name; wrapped into
+                ``IQuery(company_name=...)``.
+            config: Per-call crawl settings.
+
+        Returns:
+            Suggestion list (possibly empty).
+        """
         return self.search_service.search_company(IQuery(company_name=query), config)
 
     def get_company_data(
@@ -87,4 +112,13 @@ class OwlerSource(SourceProvider):
         url: str,
         config: Optional[ICrawlerConfig] = None,
     ) -> Optional[CompanyData]:
+        """Scrape an owler.com company page URL into CompanyData (cached).
+
+        Args:
+            url: Canonical company page URL.
+            config: Per-call crawl settings.
+
+        Returns:
+            The parsed record, or ``None`` when unparseable.
+        """
         return self.scraping_service.scrape_company_page(url, config)

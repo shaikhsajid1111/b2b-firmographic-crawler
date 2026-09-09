@@ -16,13 +16,17 @@ logger = get_logger(__name__)
 
 
 class SeleniumbaseSearchCrawler(CompanyNameScraper):
+    """Name-search fallback: type into Craft's search box in UC-mode Chrome and capture the GraphQL response off the wire via CDP performance logs."""
+
     def __init__(self, *, headless: bool = False, page_load_timeout: int = 30) -> None:
+        """Configure browser defaults (see :class:`CraftSeleniumUrlScraper` for headless/timeout semantics)."""
         self.headless = headless
         self.page_load_timeout = page_load_timeout
 
     def _build_driver_options(
         self, config: Optional[ICrawlerConfig]
     ) -> dict[str, object]:
+        """Driver kwargs for search capture: UC mode, headless flag, proxy, plus ``log_cdp_events`` so network traffic is observable."""
         driver_options: dict[str, object] = {
             "uc": config.uc if config is not None else True,
             "headless": self.headless
@@ -35,6 +39,19 @@ class SeleniumbaseSearchCrawler(CompanyNameScraper):
 
     @staticmethod
     def _graphql_response_body(driver, timeout: float) -> str:
+        """Wait for and return the UniversalSearch GraphQL response body.
+
+        Polls CDP performance logs, tracking ``Network.responseReceived``
+        for the search endpoint and resolving the body on the matching
+        ``Network.loadingFinished`` via ``Network.getResponseBody``.
+
+        Args:
+            driver: Live SeleniumBase driver on the search page.
+            timeout: Seconds to wait for the XHR round-trip.
+
+        Returns:
+            Raw response body string.
+        """
         graphql_url = CraftScrapingUtils.get_search_query_url()
         response_ids: set[str] = set()
         response_urls: dict[str, str] = {}
@@ -66,9 +83,25 @@ class SeleniumbaseSearchCrawler(CompanyNameScraper):
         response_body = WebDriverWait(driver, timeout).until(find_response_body)
         return str(response_body)
 
-    def scrape(
-        self, query: str, config: Optional[ICrawlerConfig] = None
-    ) -> str:
+    def scrape(self, query: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Type ``query`` into the search box and return the captured GraphQL payload.
+
+        Drains the performance log first (to avoid stale entries), types
+        human-style via :func:`ScrapingUtils.enter_keys_to_element`,
+        then intercepts the response. List-wrapped payloads are
+        unwrapped to their first element; empty results become an
+        explicit ``{"data": {"universalSearch": []}}`` envelope.
+
+        Args:
+            query: Free-text company name.
+            config: UC/headless/proxy/timeout settings.
+
+        Returns:
+            Raw GraphQL response body as a JSON string.
+
+        Raises:
+            Exception: Render/typing/capture failures (after logging).
+        """
         url = CraftScrapingUtils.build_craft_page_url()
         logger.info("Starting crawl: %s", url)
         request_timeout = (
@@ -104,6 +137,7 @@ class SeleniumbaseSearchCrawler(CompanyNameScraper):
 
 
 def main() -> None:
+    """CLI entry point: search Craft for one company name and print the raw GraphQL response (``--headless`` supported)."""
     argument_parser = argparse.ArgumentParser(
         description="Fetch a Craft company name with SeleniumBase UC mode."
     )

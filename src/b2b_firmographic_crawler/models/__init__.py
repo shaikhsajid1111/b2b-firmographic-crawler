@@ -1,3 +1,5 @@
+"""Convenience re-exports of CompanyData and all nested models/enums."""
+
 from .company_data import (
     CompanyData,
     CompanyEmployeeCount,

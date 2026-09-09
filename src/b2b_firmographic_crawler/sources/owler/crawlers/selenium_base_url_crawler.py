@@ -22,6 +22,12 @@ class OwlerSeleniumUrlScraper(UrlScraper):
     """
 
     def __init__(self, *, headless: bool = False, page_load_timeout: int = 30) -> None:
+        """Configure browser defaults (overridable per call via ``ICrawlerConfig``).
+
+        Args:
+            headless: Prefer headless Chrome (``headless or config.headless`` wins).
+            page_load_timeout: Seconds for page loads when no config is passed.
+        """
         self.headless = headless
         self.page_load_timeout = page_load_timeout
 
@@ -34,6 +40,7 @@ class OwlerSeleniumUrlScraper(UrlScraper):
     def _build_driver_options(
         self, config: Optional[ICrawlerConfig]
     ) -> dict[str, object]:
+        """Translate constructor + ``config`` into SeleniumBase ``Driver`` kwargs (UC mode, headless flag, optional proxy)."""
         driver_options: dict[str, object] = {
             "uc": config.uc if config is not None else True,
             "headless": self.headless
@@ -44,6 +51,21 @@ class OwlerSeleniumUrlScraper(UrlScraper):
         return driver_options
 
     def scrape(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Render ``url`` in UC-mode Chrome and return ``window.__NEXT_DATA__.props.initialState`` as JSON.
+
+        Waits for ``document.readyState == "complete"``, reads the
+        state via ``execute_script``, and always quits the driver.
+
+        Args:
+            url: Owler company page URL.
+            config: UC/headless/proxy/timeout settings.
+
+        Returns:
+            The initial state serialized as a JSON string.
+
+        Raises:
+            Exception: Render/extraction failures (after logging).
+        """
         logger.info("Starting crawl: %s", url)
         request_timeout = (
             config.request_timeout if config is not None else self.page_load_timeout
@@ -77,6 +99,7 @@ class OwlerSeleniumUrlScraper(UrlScraper):
 
 
 def main() -> None:
+    """CLI entry point: fetch one Owler URL with Selenium and print the JSON (``--headless`` supported)."""
     argument_parser = argparse.ArgumentParser(
         description="Fetch an Owler page with SeleniumBase UC mode."
     )

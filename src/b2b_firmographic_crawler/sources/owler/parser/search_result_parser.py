@@ -12,6 +12,23 @@ class OwlerSearchParser(SearchResponseParser):
     """Parser for Owler search API responses."""
 
     def parse(self, data) -> List[ISearchResponse]:
+        """Convert the ``results`` array into ISearchResponse entries.
+
+        Uses each hit's ``name`` + ``teamName`` slug, preferring the
+        ``seoFriendlyCompanyProfileUrl`` when present and otherwise
+        building ``https://www.owler.com/company/<slug>``. Hits missing
+        a name or slug are skipped.
+
+        Args:
+            data: Raw search API response body as text.
+
+        Returns:
+            One :class:`ISearchResponse` per usable hit (maybe empty).
+
+        Raises:
+            ValueError: When the payload is not a JSON object.
+            Exception: JSON decode failures (after logging).
+        """
         try:
             dict_data = json.loads(data)
             if not isinstance(dict_data, dict):

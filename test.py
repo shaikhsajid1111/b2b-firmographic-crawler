@@ -92,7 +92,10 @@ CRAFT_COMPANY_CACHE = json.dumps(
         },
         "fund1": {"value": 12000000, "currencySymbol": "$"},
         "kex1": {"name": "Jane Doe", "title": "CEO"},
-        "Company:999": {"displayName": "RivalCo", "tags": [{"id": "tag1", "typename": "Tag"}]},
+        "Company:999": {
+            "displayName": "RivalCo",
+            "tags": [{"id": "tag1", "typename": "Tag"}],
+        },
         "inc1": {"revenue": 500.5, "currencyIsoCode": "USD", "period": {"id": "p1"}},
         "p1": {"displayEndDate": "2023-12-31", "periodType": "FY"},
         "om1": {
@@ -131,8 +134,6 @@ class FakeCraftUrlScraper(UrlScraper):
         return CRAFT_COMPANY_CACHE
 
 
-
-
 # --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
@@ -143,7 +144,9 @@ def test_company_data_defaults():
     a = CompanyData(company_name="A")
     time.sleep(0.01)
     b = CompanyData(company_name="B")
-    assert a.last_scraped_at != b.last_scraped_at, "last_scraped_at must be per-instance"
+    assert (
+        a.last_scraped_at != b.last_scraped_at
+    ), "last_scraped_at must be per-instance"
     assert a.company_status.status.value == "unknown"
     assert a.company_founded_year is None
     assert a.company_industries == []
@@ -167,7 +170,9 @@ def test_craft_parser_parses_full_payload():
     assert company.similar_companies[0].company_name == "RivalCo"
     assert company.company_income_statements[0].revenue == 500.5
     assert company.company_operating_metrics[0].metric_value == 99.5
-    assert company.company_status.status.value == "unknown"  # "Operating" has no keyword match
+    assert (
+        company.company_status.status.value == "unknown"
+    )  # "Operating" has no keyword match
 
 
 def test_disk_cache_round_trip():
@@ -227,7 +232,6 @@ def test_craft_scrape_flow_with_fake_scraper():
             "https://craft.co/stripe", ICrawlerConfig(force_rescrape=True)
         )
         assert fake.calls == ["https://craft.co/stripe"] * 2
-
 
 
 def test_registry_rejects_unknown_source():

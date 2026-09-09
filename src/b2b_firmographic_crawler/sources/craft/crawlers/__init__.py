@@ -1,3 +1,5 @@
+"""Craft crawlers: HTTP + Selenium fetchers and fallback chains."""
+
 from b2b_firmographic_crawler.sources.craft.crawlers.company_name_scraper_chain import (
     CompanyNameScraperChain,
 )

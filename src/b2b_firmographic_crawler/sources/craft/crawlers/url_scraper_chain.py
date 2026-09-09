@@ -15,14 +15,38 @@ class CraftUrlScraperChain(UrlScraper):
     """
 
     def __init__(self, scrapers: Iterable[UrlScraper]):
+        """Chain scrapers tried in order (HTTP first, Selenium fallback).
+
+        Args:
+            scrapers: Non-empty sequence of :class:`UrlScraper`.
+
+        Raises:
+            ValueError: If ``scrapers`` is empty.
+        """
         self.scrapers = tuple(scrapers)
         if not self.scrapers:
             raise ValueError("UrlScraperChain requires at least one scraper")
 
     def build_proxies(self, proxy: Optional[str]):
+        """No-op: proxy handling is delegated to each chained scraper."""
         return None
 
     def scrape(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Return the first successful scraper's payload for ``url``.
+
+        Each failure is logged with traceback and the next scraper is
+        tried; when all fail, the *last* error is re-raised.
+
+        Args:
+            url: Company page URL.
+            config: Forwarded to every chained scraper.
+
+        Returns:
+            Raw page payload from the first scraper that succeeds.
+
+        Raises:
+            Exception: The last scraper's error, if none succeeded.
+        """
         last_error: Optional[Exception] = None
 
         for scraper in self.scrapers:

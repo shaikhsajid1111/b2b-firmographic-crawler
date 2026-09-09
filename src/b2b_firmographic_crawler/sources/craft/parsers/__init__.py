@@ -1,3 +1,5 @@
+"""Craft parsers: page + search-response parsing."""
+
 from b2b_firmographic_crawler.sources.craft.parsers.company_page_parser import (
     CraftParser,
 )

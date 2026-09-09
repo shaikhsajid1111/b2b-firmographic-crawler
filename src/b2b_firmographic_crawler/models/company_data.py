@@ -1,3 +1,11 @@
+"""Firmographic data model: every source returns this same schema.
+
+The top-level :class:`CompanyData` aggregates funding, headcount time
+series, locations, executives, competitors, operating metrics and
+income statements. All fields tolerate missing source data via
+sensible defaults, and nested models keep their own descriptions.
+"""
+
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 from enum import Enum
@@ -5,6 +13,8 @@ from datetime import datetime, timezone
 
 
 class CompanyFundingInfo(BaseModel):
+    """One funding round: amount, currency, date and participating investors."""
+
     funding_round: str = Field(
         default="unknown", description="The funding round of the company"
     )
@@ -23,21 +33,19 @@ class CompanyFundingInfo(BaseModel):
 
 
 class CompanyOperatingMetric(BaseModel):
-    company_specific_kpi: str = Field(
-        default="", description="Company Specific KPIs"
-    )
+    """A company-specific KPI snapshot (e.g. MAU) with value, unit and date."""
+
+    company_specific_kpi: str = Field(default="", description="Company Specific KPIs")
     metric_value: Optional[float] = Field(
         default=None, description="Metric value of the defined KPIs"
     )
-    unit_type: Optional[str] = Field(
-        default=None, description="Unit type of the KPIs"
-    )
-    date: Optional[datetime] = Field(
-        default=None, description="The date of the metric"
-    )
+    unit_type: Optional[str] = Field(default=None, description="Unit type of the KPIs")
+    date: Optional[datetime] = Field(default=None, description="The date of the metric")
 
 
 class CompanyStatus(Enum):
+    """Lifecycle states a company can be in; defaults to UNKNOWN when the source is ambiguous."""
+
     ACTIVE = "active"
     INACTIVE = "inactive"
     ACQUIRED = "acquired"
@@ -47,6 +55,8 @@ class CompanyStatus(Enum):
 
 
 class CurrentCompanyStatus(BaseModel):
+    """A :class:`CompanyStatus` value stamped with when it was observed."""
+
     status: CompanyStatus = Field(
         default=CompanyStatus.UNKNOWN, description="The status of the company"
     )
@@ -56,6 +66,8 @@ class CurrentCompanyStatus(BaseModel):
 
 
 class CompanyEmployeeCount(BaseModel):
+    """Headcount datapoint; ``month``/``year`` locate it in time, together forming the employee-count time series."""
+
     total_employees: int = Field(..., description="The total number of employees")
     month: Optional[int] = Field(
         default=None, description="The month of the employee count"
@@ -66,12 +78,16 @@ class CompanyEmployeeCount(BaseModel):
 
 
 class OtherSocialMedia(Enum):
+    """Social profiles beyond LinkedIn/Twitter, used as dict keys in ``other_social_media_urls``."""
+
     INSTAGRAM = "instagram"
     FACEBOOK = "facebook"
     CRUNCHBASE = "crunchbase"
 
 
 class KeyExecutive(BaseModel):
+    """A person in company leadership: name, title and optional profile links."""
+
     name: str = Field(..., description="The name of the key executive")
     title: str = Field(..., description="The title of the key executive")
     linkedin_url: Optional[str] = Field(
@@ -86,6 +102,8 @@ class KeyExecutive(BaseModel):
 
 
 class CompanyLocation(BaseModel):
+    """One office location; ``is_headquarter`` flags the HQ entry."""
+
     city: Optional[str] = Field(
         default=None, description="The city of the company location"
     )
@@ -101,9 +119,7 @@ class CompanyLocation(BaseModel):
     postal_code: Optional[str] = Field(
         default=None, description="The postal code of the company location"
     )
-    address: Optional[str] = Field(
-        default=None, description="Office location"
-    )
+    address: Optional[str] = Field(default=None, description="Office location")
     longitude: Optional[float] = Field(
         default=None, description="The longitude of the company location"
     )
@@ -116,6 +132,8 @@ class CompanyLocation(BaseModel):
 
 
 class SimilarCompany(BaseModel):
+    """A competitor: name plus its industry tags."""
+
     company_name: str = Field(..., description="The name of the similar company")
     company_industries: List[str] = Field(
         default_factory=list, description="The industries of the similar company"
@@ -123,6 +141,8 @@ class SimilarCompany(BaseModel):
 
 
 class IncomeStatement(BaseModel):
+    """One reporting period of financials (revenue, margins, EBITDA, ...)."""
+
     revenue: Optional[float] = Field(
         default=None, description="The revenue of the company"
     )
@@ -141,19 +161,23 @@ class IncomeStatement(BaseModel):
     period_type: Optional[str] = Field(
         default=None, description="The type of the period"
     )
-    ebitda: Optional[float] = Field(
-        default=None, description="The EBIT of the company"
-    )
+    ebitda: Optional[float] = Field(default=None, description="The EBIT of the company")
     gross_profit: Optional[float] = Field(
         default=None, description="The gross profit of the company"
     )
 
 
 class CompanyData(BaseModel):
+    """The validated firmographic record every source produces.
+
+    All collections default to empty and all scalars to ``None``/``""``,
+    so partially scraped pages still validate. ``company_name`` is the
+    only required field; ``last_scraped_at`` is stamped in UTC
+    automatically per record.
+    """
+
     company_name: str = Field(..., description="The name of the company")
-    company_domain: str = Field(
-        default="", description="The domain of the company"
-    )
+    company_domain: str = Field(default="", description="The domain of the company")
     company_industries: List[str] = Field(
         default_factory=list, description="The industries of the company"
     )
@@ -215,4 +239,3 @@ class CompanyData(BaseModel):
         default_factory=lambda: datetime.now(tz=timezone.utc),
         description="The timestamp when the data was last scraped",
     )
-

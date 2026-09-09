@@ -3,14 +3,16 @@ from typing import Dict
 
 
 class CraftScrapingUtils:
-    """Craft.co specific scraping utilities."""
+    """Craft.co request builders: GraphQL endpoint, headers, payload, page URLs."""
 
     @staticmethod
     def get_search_query_url() -> str:
+        """Return the Craft GraphQL endpoint used for name search."""
         return "https://craft.co/graphql"
 
     @staticmethod
     def prepare_search_query_headers() -> Dict[str, str]:
+        """Return browser-like headers for the GraphQL search request (same-origin CORS + Chrome UA)."""
         headers = {
             "accept": "*/*",
             "accept-language": "en-GB,en;q=0.8",
@@ -31,6 +33,14 @@ class CraftScrapingUtils:
 
     @staticmethod
     def prepare_search_query_payload(query: str) -> str:
+        """Build the ``UniversalSearch`` GraphQL envelope for ``query``.
+
+        Args:
+            query: Free-text company name.
+
+        Returns:
+            JSON-encoded GraphQL request body (operation + fragments).
+        """
         return json.dumps(
             {
                 "operationName": "UniversalSearch",
@@ -41,4 +51,12 @@ class CraftScrapingUtils:
 
     @staticmethod
     def build_craft_page_url(query: str = "google") -> str:
+        """Build a Craft search landing URL.
+
+        Used as the Selenium entry page whose search box is driven to
+        capture the GraphQL response.
+
+        Args:
+            query: Slug appended to ``https://craft.co/``.
+        """
         return f"https://craft.co/{query}"

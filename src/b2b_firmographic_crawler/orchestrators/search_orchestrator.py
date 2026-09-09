@@ -23,6 +23,13 @@ class CompanySearchingService:
         searcher: CompanySearcher,
         cache_dir: Optional[str] = None,
     ):
+        """Wire a source's searcher to an ISearchResponse cache.
+
+        Args:
+            searcher: Source-specific company lookup.
+            cache_dir: Base dir for the ``ISearchResponse`` disk cache;
+                defaults to the current working directory.
+        """
         self.searcher = searcher
         self._disk_cache = DiskCache(
             ISearchResponse, cache_dir or os.getcwd()
@@ -31,6 +38,25 @@ class CompanySearchingService:
     def search_company(
         self, query: IQuery, config: Optional[ICrawlerConfig] = None
     ) -> List[ISearchResponse]:
+        """Search by company name with caching.
+
+        Only ``query.company_name`` is honored today — a query without
+        it yields ``[]`` (stock-ticker search is not implemented by any
+        source yet). Fresh searches are cached under the raw
+        company-name string with a TTL from
+        ``search_cache_expiry_time_days``; ``force_rescrape`` bypasses
+        the cache.
+
+        Args:
+            query: Search request (name and/or ticker).
+            config: Crawl settings; defaults are used when omitted.
+
+        Returns:
+            Suggestion list (possibly empty).
+
+        Raises:
+            Exception: Search failures after logging.
+        """
         crawler_config = config or ICrawlerConfig()
         results: list[ISearchResponse] = []
 

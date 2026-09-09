@@ -1,3 +1,10 @@
+"""Owler page parser: __NEXT_DATA__ initialState -> CompanyData.
+
+Owler's Next.js state is a flat company dict (no reference graph, unlike
+Craft): names, links, funding, leaders, competitors and industries are
+read directly, with tolerant ``_safe_*`` converters for sloppy values.
+"""
+
 import json
 from typing import Any, Dict, List, Optional
 
@@ -94,7 +101,7 @@ class OwlerParser(Parser):
             return None
 
     def _safe_float(self, value: Any) -> Optional[float]:
-        """Safely convert a value to float."""
+        """Convert ``value`` to float, returning ``None`` for missing/unparseable input instead of raising."""
         if value is None:
             return None
         try:
@@ -103,7 +110,7 @@ class OwlerParser(Parser):
             return None
 
     def _parse_employee_count(self, raw_data: RawData) -> List[CompanyEmployeeCount]:
-        """Extract employee count information."""
+        """Build the headcount series from Owler's ``employeeCount`` field (entries lacking a usable total are skipped)."""
         employee_counts = []
         count = raw_data.get("employeeCount")
         if count:
@@ -115,7 +122,7 @@ class OwlerParser(Parser):
         return employee_counts
 
     def _parse_key_executives(self, raw_data: RawData) -> List[KeyExecutive]:
-        """Extract key executive information."""
+        """Build leadership entries from Owler's CEO + leadership list (name/title plus LinkedIn/Twitter when present)."""
         executives = []
 
         # Parse CEO detail
@@ -185,7 +192,8 @@ class OwlerParser(Parser):
             funding_info.append(
                 CompanyFundingInfo(
                     funding_round=funding.get("fundingRound", "unknown"),
-                    funding_amount=self._safe_float(funding.get("fundingAmount")) or 0.0,
+                    funding_amount=self._safe_float(funding.get("fundingAmount"))
+                    or 0.0,
                     funding_date=funding.get("fundingDate"),
                     investors=investors,
                 )

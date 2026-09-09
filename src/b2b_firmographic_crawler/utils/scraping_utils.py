@@ -8,7 +8,16 @@ class ScrapingUtils:
 
     @staticmethod
     def enter_keys_to_element(element: Any, query: str) -> None:
-        """Simulate human-like typing into an element."""
+        """Simulate human-like typing into a Selenium input element.
+
+        Clicks and clears the field, then sends ``query`` one character
+        at a time with a small random pause (60–180 ms) so
+        keystroke-driven autocomplete/search requests fire naturally.
+
+        Args:
+            element: Selenium input element to type into.
+            query: Text to type.
+        """
         element.click()
         element.clear()
         for char in query:

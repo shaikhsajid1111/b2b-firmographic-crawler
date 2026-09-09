@@ -15,11 +15,34 @@ class OwlerCompanyNameScraperChain(CompanyNameScraper):
     """
 
     def __init__(self, scrapers: Iterable[CompanyNameScraper]):
+        """Chain name-search scrapers tried in order until one responds.
+
+        Args:
+            scrapers: Non-empty sequence of :class:`CompanyNameScraper`.
+
+        Raises:
+            ValueError: If ``scrapers`` is empty.
+        """
         self.scrapers = tuple(scrapers)
         if not self.scrapers:
             raise ValueError("CompanyNameScraperChain requires at least one scraper")
 
     def scrape(self, query: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Return the first successful raw search response for ``query``.
+
+        Failures are logged and iteration continues; the last error is
+        re-raised when every scraper fails.
+
+        Args:
+            query: Free-text company name.
+            config: Forwarded to every chained scraper.
+
+        Returns:
+            Raw search response body.
+
+        Raises:
+            Exception: The last scraper's error, if none succeeded.
+        """
         last_error: Optional[Exception] = None
 
         for scraper in self.scrapers:

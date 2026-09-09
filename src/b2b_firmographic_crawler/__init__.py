@@ -33,7 +33,24 @@ __all__ = [
 
 
 def register_source(name: str):
-    """Decorator alias for registering a new data source by string name."""
+    """Decorator alias for registering a new data source by string name.
+
+    Thin wrapper around :meth:`SourceRegistry.register` so source
+    authors only need to import from the top-level package::
+
+        from b2b_firmographic_crawler import SourceProvider, register_source
+
+        @register_source("crunchbase")
+        class CrunchbaseSource(SourceProvider):
+            ...
+
+    Args:
+        name: Source key users will pass as ``source="..."``.
+            Case-insensitive; surrounding whitespace is ignored.
+
+    Returns:
+        The class decorator that registers the provider.
+    """
     return SourceRegistry.register(name)
 
 
@@ -62,6 +79,17 @@ class B2BFirmographicCrawler:
         config: Optional[ICrawlerConfig] = None,
         cache_dir: Optional[str] = None,
     ) -> None:
+        """Create the facade with default config and an empty provider cache.
+
+        Args:
+            config: Default crawl settings used when a call does not pass
+                its own ``config``. A fresh :class:`ICrawlerConfig` is
+                built when omitted.
+            cache_dir: Base directory for the on-disk caches. Each source
+                provider receives it and stores ``CompanyData`` /
+                ``ISearchResponse`` records underneath. Falls back to the
+                current working directory when omitted.
+        """
         self.config = config or ICrawlerConfig()
         self.cache_dir = cache_dir
         self._providers = {}
@@ -83,7 +111,22 @@ class B2BFirmographicCrawler:
         source: str = "craft",
         config: Optional[ICrawlerConfig] = None,
     ) -> List[ISearchResponse]:
-        """Search companies by name on the given source."""
+        """Search companies by name on the given source.
+
+        Args:
+            query: Free-text company name, e.g. ``"stripe"``.
+            source: Registered source key (``"craft"``, ``"owler"``, ...).
+                Case-insensitive.
+            config: Per-call crawl settings. Falls back to the facade-level
+                config when omitted.
+
+        Returns:
+            A list of :class:`ISearchResponse` suggestions (name, canonical
+            page URL, slug, logo). Empty when nothing matched.
+
+        Raises:
+            ValueError: If ``source`` is not registered.
+        """
         return self._get_provider(source).search_company(query, config or self.config)
 
     def get_company_data(
@@ -92,7 +135,22 @@ class B2BFirmographicCrawler:
         source: str = "craft",
         config: Optional[ICrawlerConfig] = None,
     ) -> Optional[CompanyData]:
-        """Scrape a company page URL on the given source."""
+        """Scrape a company page URL on the given source.
+
+        Args:
+            url: Canonical company page URL, usually taken from an
+                :class:`ISearchResponse` (``source_url``).
+            source: Registered source key the URL belongs to.
+            config: Per-call crawl settings. Falls back to the facade-level
+                config when omitted.
+
+        Returns:
+            The parsed :class:`CompanyData`, served from cache when fresh,
+            or ``None`` when the page could not be parsed.
+
+        Raises:
+            ValueError: If ``source`` is not registered.
+        """
         return self._get_provider(source).get_company_data(url, config or self.config)
 
     def get_company_data_by_name(
@@ -101,7 +159,25 @@ class B2BFirmographicCrawler:
         source: str = "craft",
         config: Optional[ICrawlerConfig] = None,
     ) -> Optional[CompanyData]:
-        """Search a company by name, then scrape the first matching page."""
+        """Search a company by name, then scrape the first matching page.
+
+        Convenience wrapper combining :meth:`search_company` and
+        :meth:`get_company_data`. Only the top-ranked search hit is scraped;
+        use the two calls separately when you need to choose among hits.
+
+        Args:
+            name: Free-text company name, e.g. ``"airbnb"``.
+            source: Registered source key.
+            config: Per-call crawl settings. Falls back to the facade-level
+                config when omitted.
+
+        Returns:
+            The parsed :class:`CompanyData` for the first hit, or ``None``
+            when search returned nothing or the page could not be parsed.
+
+        Raises:
+            ValueError: If ``source`` is not registered.
+        """
         results = self.search_company(name, source, config)
         if not results:
             return None

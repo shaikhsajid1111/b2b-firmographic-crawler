@@ -1,0 +1,17 @@
+# Pre-commit hooks for b2b-firmographic-crawler — Black enforcement at commit time.
+#
+# One-time activation (from the repo root):
+#   uv run pre-commit install        # installs the git hook
+#   uv run pre-commit run --all-files  # run all hooks now (also useful in CI)
+#
+# The Black config is read from pyproject.toml ([tool.black]) automatically —
+# nothing is duplicated here, so script, IDE and pre-commit stay in sync.
+
+repos:
+  - repo: https://github.com/psf/black
+    rev: 26.5.1
+    hooks:
+      - id: black
+        # Default: reformat staged Python files in place (the commit fails
+        # until the changes are re-added). Switch to `args: [--check]` for
+        # strict fail-without-edit behaviour instead.

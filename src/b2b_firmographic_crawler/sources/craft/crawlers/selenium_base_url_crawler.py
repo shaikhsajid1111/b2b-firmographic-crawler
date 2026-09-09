@@ -22,6 +22,15 @@ class CraftSeleniumUrlScraper(UrlScraper):
     """
 
     def __init__(self, *, headless: bool = False, page_load_timeout: int = 30) -> None:
+        """Configure browser defaults (overridable per call via ``ICrawlerConfig``).
+
+        Args:
+            headless: Prefer headless Chrome. The effective value is
+                ``headless or config.headless``, so config can force
+                headless but never force a visible window.
+            page_load_timeout: Seconds for page loads when no config is
+                passed to :meth:`scrape`.
+        """
         self.headless = headless
         self.page_load_timeout = page_load_timeout
 
@@ -34,6 +43,7 @@ class CraftSeleniumUrlScraper(UrlScraper):
     def _build_driver_options(
         self, config: Optional[ICrawlerConfig]
     ) -> dict[str, object]:
+        """Translate constructor + ``config`` into SeleniumBase ``Driver`` kwargs (UC mode, headless flag, optional proxy)."""
         driver_options: dict[str, object] = {
             "uc": config.uc if config is not None else True,
             "headless": self.headless
@@ -44,6 +54,23 @@ class CraftSeleniumUrlScraper(UrlScraper):
         return driver_options
 
     def scrape(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Render ``url`` in UC-mode Chrome and return ``window.App.cache`` as JSON.
+
+        Waits for ``document.readyState == "complete"``, reads the
+        embedded cache via ``execute_script``, and always quits the
+        driver. ``TypeError`` (unserializable/missing cache) and other
+        failures are logged and re-raised for the chain to handle.
+
+        Args:
+            url: Craft company page URL.
+            config: UC/headless/proxy/timeout settings.
+
+        Returns:
+            The embedded cache serialized as a JSON string.
+
+        Raises:
+            Exception: Render/extraction failures (after logging).
+        """
         logger.info("Starting crawl: %s", url)
         request_timeout = (
             config.request_timeout if config is not None else self.page_load_timeout
@@ -75,6 +102,7 @@ class CraftSeleniumUrlScraper(UrlScraper):
 
 
 def main() -> None:
+    """CLI entry point: fetch one Craft URL with Selenium and print the JSON (``--headless`` supported)."""
     argument_parser = argparse.ArgumentParser(
         description="Fetch a Craft page with SeleniumBase UC mode."
     )

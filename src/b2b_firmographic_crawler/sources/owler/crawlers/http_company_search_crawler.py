@@ -11,13 +11,27 @@ logger = get_logger(__name__)
 
 
 class OwlerCompanySearchService(CompanyNameScraper):
+    """Name search via Owler's ``basicSearchInternal`` API (plain HTTP GET)."""
 
     def build_proxies(self, proxy: Optional[str]) -> Optional[dict]:
+        """Map proxy config to ``{"http": ..., "https": ...}`` form, or ``None`` when unset. (Note: unlike the Craft twin, the result is passed as ``proxies`` without Chrome impersonation — kept as-is.)"""
         if not proxy:
             return None
         return {"http": f"http://{proxy}", "https": f"http://{proxy}"}
 
     def scrape(self, query: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """GET the internal search API for ``query`` and return the raw body.
+
+        Args:
+            query: Free-text company name (interpolated as ``searchTerm``).
+            config: Proxy settings (only ``proxy`` is honored here).
+
+        Returns:
+            Raw search API response body as text.
+
+        Raises:
+            Exception: Transport/HTTP errors (after logging).
+        """
         try:
             headers = OwlerScrapingUtils.prepare_search_query_headers()
             payload = ""

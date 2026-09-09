@@ -1,3 +1,5 @@
+"""Craft.co source package: crawlers, parsers, provider."""
+
 from b2b_firmographic_crawler.sources.craft.crawlers.company_name_scraper_chain import (
     CompanyNameScraperChain,
 )

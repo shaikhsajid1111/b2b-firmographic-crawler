@@ -20,6 +20,18 @@ class SourceRegistry:
         """Class decorator registering a SourceProvider under ``name``."""
 
         def decorator(provider_cls: Type[SourceProvider]) -> Type[SourceProvider]:
+            """Validate, normalize and store one provider class.
+
+            The source name is stripped/lowercased to make lookups
+            case-insensitive; the class must expose ``search_company``
+            and ``get_company_data``. Re-registering an existing key
+            raises, and the normalized key is stamped back onto the
+            class as ``source_name``.
+
+            Raises:
+                ValueError: On a bad name, a non-conforming class, or a
+                    duplicate registration.
+            """
             if not (
                 isinstance(name, str)
                 and name

@@ -23,12 +23,14 @@ class OwlerSeleniumSearchCrawler(CompanyNameScraper):
     """
 
     def __init__(self, *, headless: bool = False, page_load_timeout: int = 30) -> None:
+        """Configure browser defaults (see :class:`OwlerSeleniumUrlScraper` for headless/timeout semantics)."""
         self.headless = headless
         self.page_load_timeout = page_load_timeout
 
     def _build_driver_options(
         self, config: Optional[ICrawlerConfig]
     ) -> dict[str, object]:
+        """Driver kwargs for search capture: UC mode, headless flag, proxy, plus ``log_cdp_events`` so network traffic is observable."""
         driver_options: dict[str, object] = {
             "uc": config.uc if config is not None else True,
             "headless": self.headless
@@ -41,7 +43,20 @@ class OwlerSeleniumSearchCrawler(CompanyNameScraper):
 
     @staticmethod
     def _intercept_search_response(driver, timeout: float) -> str:
-        """Intercept the Owler search API response from network logs."""
+        """Wait for and return the ``basicSearchInternal`` API response body.
+
+        Polls CDP performance logs, tracking ``Network.responseReceived``
+        entries whose URL contains the search-API path and resolving the
+        body on the matching ``Network.loadingFinished`` via
+        ``Network.getResponseBody``.
+
+        Args:
+            driver: Live SeleniumBase driver on owler.com.
+            timeout: Seconds to wait for the XHR round-trip.
+
+        Returns:
+            Raw search API response body string.
+        """
         search_api_pattern = "/a/v1/pb/basicSearchInternal"
         response_ids: set[str] = set()
         response_urls: dict[str, str] = {}
@@ -73,9 +88,23 @@ class OwlerSeleniumSearchCrawler(CompanyNameScraper):
         response_body = WebDriverWait(driver, timeout).until(find_response_body)
         return str(response_body)
 
-    def scrape(
-        self, query: str, config: Optional[ICrawlerConfig] = None
-    ) -> str:
+    def scrape(self, query: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Type ``query`` into the homepage search box and return the intercepted API response.
+
+        Drains the performance log first (to avoid stale entries), types
+        human-style via :func:`ScrapingUtils.enter_keys_to_element`,
+        then intercepts the XHR body.
+
+        Args:
+            query: Free-text company name.
+            config: UC/headless/proxy/timeout settings.
+
+        Returns:
+            Raw search API response body.
+
+        Raises:
+            Exception: Render/typing/capture failures (after logging).
+        """
         url = "https://www.owler.com"
         logger.info("Starting crawl: %s", url)
         request_timeout = (
@@ -108,6 +137,7 @@ class OwlerSeleniumSearchCrawler(CompanyNameScraper):
 
 
 def main() -> None:
+    """CLI entry point: search Owler for one company name and print the raw API response (``--headless`` supported)."""
     argument_parser = argparse.ArgumentParser(
         description="Search Owler for a company name with SeleniumBase UC mode."
     )

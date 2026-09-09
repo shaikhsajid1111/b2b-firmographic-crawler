@@ -1,3 +1,11 @@
+"""Craft page parser: window.App.cache reference-graph -> CompanyData.
+
+Craft embeds a normalized store: the ``"Company:<id>"`` node holds the
+company, while lists (tags, employees, locations, funding, executives,
+competitors, income statements, metrics) are ``{"id", "typename"}``
+references resolved against the same dict via :meth:`_resolve_reference`.
+"""
+
 import json
 from typing import Any, Dict, List, Optional, TypeAlias
 
@@ -23,8 +31,10 @@ RawData: TypeAlias = dict[str, Any]
 
 
 class CraftParser(Parser):
+    """Parse Craft's ``window.App.cache`` JSON into :class:`CompanyData`."""
 
     def _parse_basic_info(self, raw_data: dict[str, Any]) -> CompanyData:
+        """Build the CompanyData skeleton: name, domain (from homepage), founded year, social links, status, description, logo, type and ticker."""
         homepage = raw_data.get("homepage", "")
 
         return CompanyData(
@@ -55,6 +65,17 @@ class CraftParser(Parser):
         raw_data: dict[str, Any],
         expected_type: str,
     ) -> Optional[dict[str, Any]]:
+        """Dereference one ``{"id", "typename"}`` pointer from the normalized cache.
+
+        Args:
+            reference: Pointer object to resolve.
+            raw_data: The whole cache dict keyed by reference id.
+            expected_type: Required ``typename`` guard.
+
+        Returns:
+            The referenced node, or ``None`` on type mismatch, missing
+            id, or absent target.
+        """
         if reference.get("typename") != expected_type:
             return None
 
@@ -70,6 +91,7 @@ class CraftParser(Parser):
         company_data: RawData,
         raw_data: RawData,
     ) -> List[CompanyFundingInfo]:
+        """Resolve the ``totalFunding`` pointer into a single aggregate funding entry (round ``"unknown"``, symbol mapped to an ISO code)."""
         funding_ref = company_data.get("totalFunding", {})
         funding_id = funding_ref.get("id")
 
@@ -98,6 +120,7 @@ class CraftParser(Parser):
         company_data: dict[str, Any],
         raw_data: dict[str, Any],
     ) -> list[CompanyEmployeeCount]:
+        """Resolve ``employees`` pointers into dated headcount entries (skips unresolvable refs)."""
         employee_counts = []
 
         for reference in company_data.get("employees", []):
@@ -128,6 +151,7 @@ class CraftParser(Parser):
     def _parse_key_executives(
         self, company_key_data: Dict, raw_company_data: Dict[str, Any]
     ) -> List[KeyExecutive]:
+        """Resolve ``keyExecutives`` pointers into :class:`KeyExecutive` entries (skips unresolvable refs)."""
         parsed_key_executives: List[KeyExecutive] = []
 
         for executive_ref in company_key_data.get("keyExecutives", []):
@@ -160,12 +184,12 @@ class CraftParser(Parser):
             parsed_key_executives.append(parsed_executive_data)
         return parsed_key_executives
 
-
     def _parse_locations(
         self,
         company_data: RawData,
         raw_data: RawData,
     ) -> list[CompanyLocation]:
+        """Resolve ``locations`` pointers into :class:`CompanyLocation` entries, preserving the HQ flag."""
         locations = []
 
         for reference in company_data.get("locations", []):
@@ -194,6 +218,7 @@ class CraftParser(Parser):
         tag_references: List[Dict],
         raw_company_data: Dict,
     ) -> List[str]:
+        """Resolve tag pointers into lower-cased industry names (``company_industries``)."""
         tags = set()
 
         for reference in tag_references or []:
@@ -213,6 +238,7 @@ class CraftParser(Parser):
         company_key_data: Dict,
         raw_company_data: Dict,
     ) -> List[SimilarCompany]:
+        """Resolve ``competitors`` company pointers into name + industries pairs."""
         similar_companies = []
 
         for reference in company_key_data.get("competitors", []):
@@ -242,6 +268,7 @@ class CraftParser(Parser):
         company_data: RawData,
         raw_data: RawData,
     ) -> list[IncomeStatement]:
+        """Resolve income-statement pointers, joining each to its ``period`` node for end-date/period-type."""
         statements = []
 
         for reference in company_data.get("incomeStatements", []):
@@ -278,6 +305,7 @@ class CraftParser(Parser):
         company_key_data: Dict,
         raw_company_data: Dict,
     ) -> List[CompanyOperatingMetric]:
+        """Resolve ``operatingMetrics`` pointers, joining period (date) and Money (value) nodes into KPI entries."""
         operating_metrics = []
 
         for reference in company_key_data.get("operatingMetrics", []):
@@ -316,6 +344,19 @@ class CraftParser(Parser):
         return operating_metrics
 
     def parse(self, data: str) -> CompanyData:
+        """Parse a ``window.App.cache`` JSON dump into a full CompanyData record.
+
+        Locates the ``"Company:<id>"`` node via regex, builds the
+        skeleton with :meth:`_parse_basic_info`, then fills every
+        section (funding, executives, headcount, locations, tags,
+        competitors, income statements, metrics).
+
+        Args:
+            data: JSON string of the normalized cache.
+
+        Returns:
+            The assembled :class:`CompanyData`.
+        """
         json_data = json.loads(data)
         company_key_data: Any = GeneralUtils.search_data_by_key(
             json_data, r"^Company:\d+$"

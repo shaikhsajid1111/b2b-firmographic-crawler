@@ -23,23 +23,30 @@ class OwlerHttpUrlScraper(UrlScraper):
     """
 
     def build_proxies(self, proxy: Optional[str]) -> Any:
+        """Map proxy config to curl-cffi's ``{"http": ..., "https": ...}`` form, or ``None`` when unset."""
         if not proxy:
             return None
         return {"http": f"http://{proxy}", "https": f"http://{proxy}"}
 
     def _build_soup(self, html_markup: str) -> BeautifulSoup:
+        """Parse raw HTML into BeautifulSoup (html.parser backend)."""
         return BeautifulSoup(html_markup, "html.parser")
 
     def _extract_next_data(self, soup: BeautifulSoup) -> Optional[Dict]:
-        """
-        Extract data from the __NEXT_DATA__ script tag.
+        """Extract ``props.initialState`` from the ``__NEXT_DATA__`` script tag.
 
-        Next.js embeds its initial state in a script tag like:
-        <script id="__NEXT_DATA__" type="application/json">{"props":{...}}</script>
+        Args:
+            soup: Parsed Owler company page.
+
+        Returns:
+            The ``initialState`` dict, or ``None`` when the tag is
+            missing or its JSON is unparsable.
         """
         # Find the script tag with id="__NEXT_DATA__"
-        script_tag = soup.find("script", {"id": "__NEXT_DATA__", "type": "application/json"})
-        
+        script_tag = soup.find(
+            "script", {"id": "__NEXT_DATA__", "type": "application/json"}
+        )
+
         if script_tag and script_tag.string:
             try:
                 data = json.loads(script_tag.string)
@@ -48,7 +55,9 @@ class OwlerHttpUrlScraper(UrlScraper):
                     props = data.get("props", {})
                     initial_state = props.get("initialState")
                     if initial_state is not None:
-                        logger.debug("Successfully extracted __NEXT_DATA__ props.initialState")
+                        logger.debug(
+                            "Successfully extracted __NEXT_DATA__ props.initialState"
+                        )
                         return initial_state
             except json.JSONDecodeError as ex:
                 logger.debug("Failed to parse __NEXT_DATA__ JSON: %s", ex)
@@ -56,6 +65,24 @@ class OwlerHttpUrlScraper(UrlScraper):
         return None
 
     def scrape(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
+        """Fetch an Owler page over HTTP and return its Next.js state as JSON.
+
+        Uses Chrome impersonation plus ``config`` proxy/timeout, then
+        extracts ``props.initialState``. Raises when the tag is absent
+        (JS-rendered content) so :class:`OwlerUrlScraperChain` can fall
+        through to Selenium.
+
+        Args:
+            url: Owler company page URL.
+            config: Proxy/timeout settings.
+
+        Returns:
+            The initial state serialized as a JSON string.
+
+        Raises:
+            ValueError: When no ``__NEXT_DATA__`` state is found.
+            Exception: Transport failures (after logging).
+        """
         try:
             logger.info("Starting HTTP crawl: %s", url)
             headers = OwlerScrapingUtils.prepare_page_headers()
