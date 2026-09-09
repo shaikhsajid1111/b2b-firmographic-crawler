@@ -8,7 +8,7 @@ from curl_cffi import requests
 from b2b_firmographic_crawler.base.scraper import UrlScraper
 from b2b_firmographic_crawler.interfaces.iconfig import ICrawlerConfig
 from b2b_firmographic_crawler.logger import get_logger
-from b2b_firmographic_crawler.utils.scraping_utils import ScrapingUtils
+from b2b_firmographic_crawler.sources.owler.utils import OwlerScrapingUtils
 
 logger = get_logger(__name__)
 
@@ -16,7 +16,10 @@ logger = get_logger(__name__)
 class OwlerHttpUrlScraper(UrlScraper):
     """HTTP URL scraper for owler.com pages.
 
-    Extracts window.__NEXT_DATA__.props.initialState from script tags.
+    Extracts JSON data from <script id="__NEXT_DATA__" type="application/json"> tag.
+
+    Owler (Next.js) embeds its initial state in a script tag:
+    <script id="__NEXT_DATA__" type="application/json">{"props":{"initialState":{...}}}</script>
     """
 
     def build_proxies(self, proxy: Optional[str]) -> Any:
@@ -27,54 +30,38 @@ class OwlerHttpUrlScraper(UrlScraper):
     def _build_soup(self, html_markup: str) -> BeautifulSoup:
         return BeautifulSoup(html_markup, "html.parser")
 
-    def _extract_next_data_from_scripts(self, soup: BeautifulSoup) -> Optional[Dict]:
+    def _extract_next_data(self, soup: BeautifulSoup) -> Optional[Dict]:
         """
-        Extract window.__NEXT_DATA__.props.initialState from script tags.
+        Extract data from the __NEXT_DATA__ script tag.
 
-        Owler (Next.js) embeds its initial state in a script tag as
-        window.__NEXT_DATA__ = {..., props: {initialState: {...}}}
+        Next.js embeds its initial state in a script tag like:
+        <script id="__NEXT_DATA__" type="application/json">{"props":{...}}</script>
         """
-        scripts = soup.find_all("script")
-
-        for script in scripts:
-            if not script.string:
-                continue
-
-            script_content = script.string
-
-            # Look for window.__NEXT_DATA__ assignment
-            pattern = r"window\.__NEXT_DATA__\s*=\s*"
-            match = re.search(pattern, script_content)
-            if not match:
-                continue
-
+        # Find the script tag with id="__NEXT_DATA__"
+        script_tag = soup.find("script", {"id": "__NEXT_DATA__", "type": "application/json"})
+        
+        if script_tag and script_tag.string:
             try:
-                json_source = re.sub(
-                    r"(?<=:)\s*undefined\b", "null", script_content[match.end() :]
-                )
-                value, _ = json.JSONDecoder().raw_decode(json_source)
+                data = json.loads(script_tag.string)
+                # Navigate to props.initialState
+                if isinstance(data, dict):
+                    props = data.get("props", {})
+                    initial_state = props.get("initialState")
+                    if initial_state is not None:
+                        logger.debug("Successfully extracted __NEXT_DATA__ props.initialState")
+                        return initial_state
             except json.JSONDecodeError as ex:
                 logger.debug("Failed to parse __NEXT_DATA__ JSON: %s", ex)
-                continue
-
-            # Navigate to props.initialState
-            if isinstance(value, dict):
-                props = value.get("props", {})
-                initial_state = props.get("initialState")
-                if initial_state is not None:
-                    logger.debug("Successfully extracted __NEXT_DATA__.props.initialState")
-                    return initial_state
 
         return None
 
     def scrape(self, url: str, config: Optional[ICrawlerConfig] = None) -> str:
         try:
             logger.info("Starting HTTP crawl: %s", url)
-            headers = ScrapingUtils.prepare_default_headers()
+            headers = OwlerScrapingUtils.prepare_page_headers()
             proxy: Optional[str] = config.proxy if config else None
             proxies = self.build_proxies(proxy) if config else None
-            response = requests.request(
-                "GET",
+            response = requests.get(
                 url,
                 headers=headers,
                 impersonate="chrome",
@@ -85,18 +72,18 @@ class OwlerHttpUrlScraper(UrlScraper):
             response.raise_for_status()
             soup = self._build_soup(response.text)
 
-            # Extract NEXT_DATA from script tags
-            next_data = self._extract_next_data_from_scripts(soup)
+            # Extract NEXT_DATA from script tag
+            next_data = self._extract_next_data(soup)
 
             if not next_data:
                 logger.warning(
-                    "No window.__NEXT_DATA__ data found in HTTP response for %s. "
+                    "No __NEXT_DATA__ script tag found in HTTP response for %s. "
                     "This may be because the data is loaded dynamically via JavaScript. "
                     "Consider using SeleniumBaseUrlScraper instead.",
                     url,
                 )
                 raise ValueError(
-                    "No window.__NEXT_DATA__ data found in response. "
+                    "No __NEXT_DATA__ script tag found in response. "
                     "The target website may load data dynamically. "
                     "Use SeleniumBaseUrlScraper for full JavaScript support."
                 )

@@ -16,12 +16,22 @@ from b2b_firmographic_crawler.sources.owler.crawlers.selenium_base_url_crawler i
 from b2b_firmographic_crawler.sources.owler.crawlers.url_scraper_chain import (
     OwlerUrlScraperChain,
 )
+from b2b_firmographic_crawler.sources.owler.parser.company_page_parser import (
+    OwlerParser,
+)
+from b2b_firmographic_crawler.sources.owler.parser.search_result_parser import (
+    OwlerSearchParser,
+)
+from b2b_firmographic_crawler.sources.owler.provider import OwlerSource
 
 __all__ = [
     "OwlerCompanyNameScraperChain",
     "OwlerCompanySearchService",
     "OwlerHttpUrlScraper",
+    "OwlerParser",
+    "OwlerSearchParser",
     "OwlerSeleniumSearchCrawler",
     "OwlerSeleniumUrlScraper",
+    "OwlerSource",
     "OwlerUrlScraperChain",
 ]
