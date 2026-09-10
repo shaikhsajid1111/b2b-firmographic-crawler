@@ -708,6 +708,7 @@ only collect what you need. See
 - [ ] Crunchbase source
 - [x] Search by stock symbol
 - [ ] SQLite exporter
+- [ ] More tests on data level.
 
 ## Publishing
 
