@@ -682,8 +682,11 @@ first; if the payload is not present in the HTML it raises and the SeleniumBase
 browser fallback takes over automatically (downloading Chrome on first use).
 
 **Where is my cache? How do I reset it?**
-Under `cache_dir` (the current directory by default): `CompanyData/` and
-`ISearchResponse/`. Delete those folders, or call `DiskCache(...).clear()`.
+Under `cache_dir` (the current directory by default), one folder per cached
+model: `CompanyData/`, `ISearchResponse/` and `TickerResolution/`. Search
+keys are namespaced per source (`craft:apple`, `owler:apple`), so the same
+query never collides across sources. Delete the folders, or call
+`DiskCache(...).clear()`.
 
 **Can I scrape through a proxy?**
 Yes — `ICrawlerConfig(proxy="host:port")`. Both the HTTP and browser scrapers
