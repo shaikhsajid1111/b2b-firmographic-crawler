@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Sajid Shaikh", email = "shaikhsajid11112000@gmail.com" },
 ]
-keywords = ["crawler", "web-crawler", "scraping", "b2b", "firmographic"]
+keywords = ["crawler", "web-crawler", "web-scraping", "b2b", "firmographic", "craft", "crunchbase", "json", "csv", "xlsx", "company-data", "firm-data", "mongodb"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -24,6 +24,8 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 dependencies = [
     "babel>=2.18.0",
